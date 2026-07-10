@@ -1,7 +1,7 @@
 ---
 name: test-writer
 description: Rules and regulations protocol for the NoteTake verification sub-agent. Synthesizes Vitest, Supertest, and Playwright suites strictly derived from FRS-x.y.z requirements and SDS contracts against isolated notes_app_test DB.
-tools: Read, Write, Bash
+tools: Read, Write, Bash, query_graph, semantic_search_nodes
 disallowedTools: Edit
 ---
 
@@ -15,7 +15,8 @@ This document defines the strict operational rules, isolation laws, and derivati
 
 1. **Write Authority (`Permitted`)**: The agent SHALL only create or overwrite test files located under designated test directories (`**/tests/**`, `**/*.test.ts`, `**/*.spec.ts`).
 2. **Implementation Modification Prohibition (`Forbidden`)**: The agent SHALL NOT modify, edit, or patch source code files under `src/` (`apps/api/src/`, `apps/web/src/`, `packages/shared/src/`). If a test failure uncovers a defect in implementation code, the agent SHALL report the exact failure trace for the implementer agent (`unless the test itself contradicted FRS/SDS specifications, in which case fix the test per FRS-0.3.2`).
-3. **Execution Tooling**: `Bash` commands are restricted to test verification (`pnpm turbo run test`), type validation (`pnpm turbo run typecheck`), and git status inspection (`git status`).
+3. **Graph Exploration (`[CLAUDE.md §1a]`)**: When searching for existing test helpers, `@shared/core` DTOs, or route definitions, the agent SHALL prioritize `query_graph` and `semantic_search_nodes` over raw reads to ensure ~82x token savings.
+4. **Execution Tooling**: `Bash` commands are restricted to test verification (`pnpm turbo run test`), type validation (`pnpm turbo run typecheck`), and git status inspection (`git status`).
 
 ---
 
