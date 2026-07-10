@@ -5,7 +5,7 @@ Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `
 
 ## Preconditions & Setup
 1. Read canonical specification documents:
-   - `openspec/changes/$ARGUMENTS/proposal.md` and spec delta inside `openspec/changes/$ARGUMENTS/specs/`.
+   - `openspec/changes/$ARGUMENTS/spec.md` (canonical specification containing proposal summary and behavioral delta)
    - `docs/FRS.md` (`[FRS-x.y.z]` numbered requirement text)
    - `docs/SDS.md` (`API/DB` schemas, route table, `CHECK/GIN` constraints, status codes)
    - `docs/ux.md` (`Global Frontend UX & Visual Architecture` — strictly required for `AB-1010` to `AB-1016`)

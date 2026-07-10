@@ -16,19 +16,26 @@ If `$ARGUMENTS` is only a bare ticket ID (like `AB-1001`), DO NOT create a bare 
 
 ---
 
-## Proposal & Spec Generation Rules (`[FRS-0.3]`)
-Generate the proposal (`openspec/changes/$ARGUMENTS/proposal.md`) and specification delta (`openspec/changes/$ARGUMENTS/specs/`) adhering to:
-1. **Precise RFC 2119 Terminology**: Every behavioral scenario must use exact `SHALL/MUST` (never `should`).
-2. **Explicit Scope Boundaries**: Every proposal must include an explicit `Out of Scope` section.
-3. **CRITICAL NOTEAPP RULES Integration**:
-   - Confirm all API request/response shapes match `@shared/core` (`packages/shared/src/schemas/` and `src/types/`).
-   - Confirm backend endpoints use `/api/v1/...` namespace and unified `{ success: true, data }` response wrappers (`[FRS-8.6]`).
-   - Confirm authentication tokens live purely in `useAuthStore` JS memory + `HttpOnly` refresh cookies (`[FRS-1.3.5]`).
-   - Confirm soft-delete state transitions set `deletedAt = now()` (`Stage 1 Trash [FRS-2.2]`).
-4. **Clarifying Questions**: Ask minimum 3, maximum 8 clarifying questions to identify edge cases, error scenarios, and potential drift before finalizing the proposal draft.
+## Spec Generation Rules (`[FRS-0.3, 1-to-1 Rule]`)
+Generate **ONLY one single file (`spec.md`)** inside `openspec/changes/$ARGUMENTS/spec.md` (`[Rule 1]`). Do NOT split across `proposal.md` or `specs/` directories. Everything must live cleanly in `spec.md`.
 
-Run `openspec proposal $ARGUMENTS` (with `$ARGUMENTS` formatted as `AB-xxxx-descriptive-name`).
-Show generated `proposal.md` and spec delta (`ADDED/MODIFIED/REMOVED` scenarios).
-Do NOT proceed to `/plan` or implementation until the user explicitly reviews and approves the spec delta (`[Rule 2]`).
+Inside `openspec/changes/$ARGUMENTS/spec.md`, structure the document with two exact sections:
+### Section 1: Proposal Summary & Scope Boundaries
+- **Objective & Traceability**: State exact target requirements (`[FRS-x.y.z]`) and architectural mappings (`[SDS §x.y]`).
+- **Explicit Scope Boundaries**: Must include an explicit `Out of Scope` section.
+- **CRITICAL NOTEAPP RULES Integration**:
+  - Confirm all API request/response shapes match `@shared/core` (`packages/shared/src/schemas/` & `src/types/`).
+  - Confirm backend endpoints use `/api/v1/...` namespace and unified `{ success: true, data }` response wrappers (`[FRS-8.6]`).
+  - Confirm authentication tokens live purely in `useAuthStore` JS memory + `HttpOnly` refresh cookies (`[FRS-1.3.5]`).
+  - Confirm soft-delete state transitions set `deletedAt = now()` (`Stage 1 Trash [FRS-2.2]`).
+
+### Section 2: Behavioral Specification (`SHALL/MUST` Scenarios)
+- **Precise RFC 2119 Terminology**: Every behavioral scenario must use exact `SHALL/MUST` (never `should`).
+- Group scenarios cleanly under `ADDED Scenarios`, `MODIFIED Scenarios`, or `REMOVED Scenarios`.
+
+**Clarifying Questions**: Before or alongside outputting `spec.md`, ask minimum 3, maximum 8 clarifying questions to identify edge cases, error scenarios, and potential drift before user sign-off.
+
+Show the complete `spec.md` content to the user.
+Do NOT proceed to `/plan` or `/implement` until the user explicitly reviews and approves `spec.md` (`[Rule 2]`).
 
 Format: `/spec AB-xxxx-short-description`

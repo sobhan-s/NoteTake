@@ -17,7 +17,7 @@ Verify that `$ARGUMENTS` matches the exact descriptive archive/change directory 
 
 ## Commit & PR Execution
 1. Run diff inspection via `code-review-graph` (`detect_changes_tool`) or `git diff main --stat`.
-2. Read: `openspec/archive/$ARGUMENTS/proposal.md` and spec delta.
+2. Read: `openspec/archive/$ARGUMENTS/spec.md`.
 3. Prepare conventional commit message matching `AGENTS.md §6` (`Rule 14`):
    ```text
    type(scope): description AB#ticket

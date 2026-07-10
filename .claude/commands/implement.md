@@ -12,7 +12,7 @@ Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `
    - `AB-1010 to AB-1015`   → FRONTEND (`apps/web` React 19 + Vite + Zustand + TipTap + shadcn/ui)
    - `AB-1016`              → E2E (`playwright` full-journey verification against `notes_app_test`)
 3. Read canonical specification documents:
-   - `openspec/changes/$ARGUMENTS/proposal.md` and spec delta (`specs/`)
+   - `openspec/changes/$ARGUMENTS/spec.md`
    - `openspec/changes/$ARGUMENTS/plan.md`
    - `docs/FRS.md` (`[FRS-x.y.z]` numbered requirement text)
    - `docs/SDS.md` (`API/DB` schemas, route table, `CHECK/GIN` constraints, status codes)

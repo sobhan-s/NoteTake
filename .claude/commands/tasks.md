@@ -5,7 +5,7 @@ Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `
 
 ## Preconditions & Setup
 1. Read canonical specification documents:
-   - `openspec/changes/$ARGUMENTS/proposal.md` and spec delta (`specs/`)
+   - `openspec/changes/$ARGUMENTS/spec.md`
    - `openspec/changes/$ARGUMENTS/plan.md`
    - `docs/FRS.md` (`[FRS-x.y.z]` numbered requirement text)
    - `docs/SDS.md` (`API/DB` schemas, route table, `CHECK/GIN` constraints, status codes)
