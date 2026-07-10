@@ -1,7 +1,7 @@
 # SOFTWARE DESIGN SPECIFICATION (`SDS.md`)
 
-**Full-Stack Note-Taking Application Monorepo**  
-_Document Version: 1.3 | Target FRS Version: v1.2 (`Locked`)_
+**Full-Stack Note-Taking Application Monorepo**
+_Document Version: 1.5 | Target FRS Version: v2.2 (`Locked`)_
 
 ---
 
@@ -62,20 +62,27 @@ The project is structured as a `pnpm workspaces` + **Turborepo (`turbo.json`)** 
 ├── turbo.json                   # Turborepo task graph & build dependency orchestration (^build) [FRS-0.1, FRS-0.6]
 ├── AGENTS.md                    # Universal Project AI Brain (<200 lines, single source of truth) [FRS-0.2]
 ├── CLAUDE.md                    # Root Claude Code permissions, compacting rules, quality gates [FRS-0.2]
-└── .claude/
+├── openspec/                    # OpenSpec SDD Workspace (@fission-ai/openspec) [FRS-0.3, Rules 1-3, 18]
+│   ├── config.yaml              # OpenSpec configuration & OpenAPI schema rules
+│   ├── changes/                 # Active spec proposals (`spec.md`, `delta-openapi.yaml`, `tasks.md`) per ticket
+│   ├── archive/                 # Archived/completed specs (`openspec archive AB-xxxx`) after review [Rule 18]
+│   └── specs/                   # Canonical domain specifications built iteratively across tickets
+└── .claude/                     # Root Claude Code Workspace Folder (`/.claude/`) [FRS-0.2, FRS-0.3, AB-1001]
     ├── commands/                # Custom Slash Commands: /start /spec /plan /tasks /implement /review /pr [FRS-0.3]
-    └── agents/                  # Read-Only Sub-Agents: reviewer.md, test-writer.md [FRS-0.3]
+    ├── agents/                  # Read-Only Sub-Agents: reviewer.md, test-writer.md [FRS-0.3]
+    ├── skills/                  # Custom Claude Code domain skills & helper scripts [AB-1001]
+    └── settings.json            # MCP configurations including mandatory Context7 live documentation server [Rule 9]
 ```
 
 #### Monorepo Runtime Specifications
 
-- **`apps/api`**: Runs on Node.js v24 LTS using Express 5 (`[FRS-0.1]`). Express 5 natively supports `async/await` request handlers without requiring external wrappers (`express-async-errors`). It incorporates `@stoplight/prism-cli` (`[FRS-0.1]`) for contract testing and OpenAPI mock verification against generated schemas (`/api/v1/docs`).
-- **`apps/web`**: Single Page Application (`SPA`) built with React 19 (`[FRS-0.1]`) and Vite. Uses TanStack Query v5 for server state and request deduplication, Zustand (`useAuthStore`, `useUiStore`) for strictly in-memory client state (`[FRS-1.3.5]`), and headless TipTap (`@tiptap/react`) for rich-text editing (`[FRS-2.1.1]`).
+- **`apps/api`**: Runs on Node.js 22 LTS using Express 5 (`[FRS-0.1]`). Express 5 natively supports `async/await` request handlers without requiring external wrappers (`express-async-errors`). It incorporates `@stoplight/prism-cli` (`[FRS-0.1]`) for contract testing and OpenAPI mock verification against generated schemas (`/api/v1/docs`).
+- **`apps/web`**: Single Page Application (`SPA`) built with React 19 (`[FRS-0.1]`), TypeScript, and Vite. Uses TanStack Query v5 for server state and request deduplication, Zustand (`useAuthStore`, `useUiStore`) for strictly in-memory client state (`[FRS-1.3.5]`), headless TipTap (`@tiptap/react`) for rich-text editing (`[FRS-2.1.1]`), and shadcn/ui for accessible UI components and skeleton screens (`[FRS-0.1]`).
 - **`packages/shared`**: The absolute single source of truth (`[Rule 11, FRS-8.5]`). Both `apps/api` and `apps/web` import `@shared/schemas/*`, `@shared/types/*`, and `@shared/constants/*`. **No DTO or validation rule may ever be duplicated across client and server workspaces.**
 - **`packages/config`**: Provides unified linting, formatting, and compiler standards (`[FRS-0.5]`), ensuring exact code style parity across the entire monorepo (`[Rule 12]`).
 - **Build & Type Tooling (`tsup` vs `tsc`)**: Backend and shared workspaces (`apps/api`, `packages/shared`) strictly utilize **`tsup`** (`@tsup/cli`) for high-performance ESM bundling (`pnpm build`). The TypeScript compiler (`tsc --noEmit`) is strictly reserved for static type verification and error checking (`pnpm typecheck`), and is NEVER used for code compilation (`[Rule 12, FRS-0.6]`).
 - **Turborepo Task & Build Orchestration (`turbo.json`)**: The monorepo uses **Turborepo (`turbo`)** (`[FRS-0.1, FRS-0.6]`) to orchestrate tasks across workspaces with intelligent topological sorting and caching. The root `turbo.json` defines pipeline dependencies where `"build"` strictly depends on `"^build"` (`"dependsOn": ["^build"]`), ensuring `packages/shared` and `packages/config` are automatically built before `apps/api` and `apps/web` can build.
-- **Strict Package Version Pinning (`[Rule 20, FRS-0.5]`)**: Every dependency and devDependency declared in `package.json` manifests across root `/`, `apps/api/`, `apps/web/`, `packages/shared/`, and `packages/config/` MUST be pinned to exact semantic version numbers (`e.g., "express": "5.0.1", "react": "19.0.0", "prisma": "6.1.0"`). Carets (`^`), tildes (`~`), wildcards (`*`), and range specifiers (`>=`) are strictly forbidden by CI linting and `package.json` validation checks (`[Rule 20]`).
+- **Strict Package Version Pinning (`[Rule 20, FRS-0.5]`)**: Every dependency and devDependency declared in `package.json` manifests across root `/`, `apps/api/`, `apps/web/`, `packages/shared/`, and `packages/config/` MUST be pinned to exact semantic version numbers (`e.g., "express": "5.0.1", "react": "19.0.0", "prisma": "6.1.0"`). Carets (`^`), tildes (`~`), wildcards (`*`), and range specifiers (`>=`) are strictly forbidden by quality gate linting and `package.json` validation checks (`[Rule 20]`).
 
 ---
 
@@ -104,58 +111,15 @@ The repository enforces strict code quality and git hygiene before commits enter
 
 ---
 
-### 1.4 GitHub Actions Continuous Integration Pipeline (`.github/workflows/ci.yml` — `[FRS-0.6]`)
+### 1.4 Local Verification & Quality Gates (`[Rule 12, FRS-0.6]`)
 
-To enforce strict quality gates (`[Rule 12]`) and block broken or non-compliant pull requests before merge (`[FRS-0.6]`), the project configures a mandatory GitHub Actions CI workflow running across all monorepo workspaces on every pull request and push to main (`[Rule 12, FRS-0.6]`).
+To enforce strict code quality (`[Rule 12]`) and verify complete Definition of Done (`DoD`) compliance across every phase checkpoint (`[FRS-0.6]`), developers and sub-agents (`test-writer.md`, `reviewer.md`) must execute local verification gates across the monorepo via Turborepo:
 
-```yaml
-# .github/workflows/ci.yml — Mandated by [FRS-0.6] & [Rule 12]
-name: Continuous Integration
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  quality-gate:
-    name: Lint, Typecheck, Build & Test [FRS-0.6]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
-      - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Check Linting Errors (--max-warnings 0) [Rule 12]
-        run: pnpm turbo run lint
-
-      - name: Check Type Errors (`tsc --noEmit`) [Rule 12]
-        run: pnpm turbo run typecheck
-
-      - name: Build Workspaces (`tsup` for backend/packages via `^build`) [Rule 12]
-        run: pnpm turbo run build
-
-      - name: Execute Test Suite [Rule 13]
-        run: pnpm turbo run test
-```
-
-#### CI Enforcement & Branch Protection Contract (`[FRS-0.6]`)
-
-- **Block Merging (`[FRS-0.6]`)**: GitHub repository branch protection rules MUST set `quality-gate` (`Lint, Typecheck, Build & Test`) as a **Required Status Check**.
-- **100% Green Requirement**: If `pnpm turbo run lint` emits even one warning (`--max-warnings 0`), if `pnpm turbo run typecheck` detects any static type mismatch, or if any test across `apps/api`, `apps/web`, or `packages/shared` fails, the pull request status turns red and merging is strictly blocked by GitHub at the API level (`[FRS-0.6]`).
+- **Linting (`[Rule 12]`)**: Run `pnpm turbo run lint` (`--max-warnings 0`). Zero warnings allowed across `apps/api`, `apps/web`, `packages/shared`, and `packages/config`.
+- **Type Checking (`[Rule 12]`)**: Run `pnpm turbo run typecheck` (`tsc --noEmit`). Zero static TypeScript type mismatches allowed across all workspaces.
+- **ESM Bundling (`[Rule 12]`)**: Run `pnpm turbo run build` (`tsup` for backend and shared workspaces via `^build`). Zero compilation errors allowed.
+- **Test Execution & Coverage (`[DoD]`)**: Run `pnpm turbo run test -- --coverage`. All tests across unit (`vitest`), contract (`supertest`), and E2E (`playwright`) must be 100% green with `≥80% coverage on new code` against an isolated test database (`[FRS-0.3.3]`).
+- **Phase Checkpoint & PR Enforcement**: A pull request (`/pr`) can only be created or merged after all four verification steps pass cleanly (`0 errors, 0 warnings, all green`) and the `/review` agent confirms `all ✅` (`[Rules 16–17]`).
 
 ---
 
@@ -195,6 +159,12 @@ volumes:
 - **Connection String (`apps/api/.env`)**: The backend connects directly to the container via `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/notes_app?schema=public"` (`[FRS-0.4]`).
 - **Prisma Synchronization**: After container healthcheck turns green, running `pnpm --filter @apps/api prisma migrate dev` applies the schema and native PostgreSQL extensions directly inside the containerized database.
 
+#### Test Database Isolation Contract (`[FRS-0.3.3, FRS-0.4]`)
+
+- **Dedicated Test Database (`notes_app_test`)**: All `supertest` contract/integration tests and `playwright` E2E full-journey tests (`[FRS-0.3.3]`) MUST execute against a dedicated, isolated test database (`e.g., notes_app_test`), loaded via `.env.test` (`DATABASE_URL="postgresql://postgres:postgres@localhost:5432/notes_app_test?schema=public"`) or managed via `@testcontainers/postgresql`.
+- **Zero Interference with Local/Production Data**: Running `supertest` or `playwright` tests against the local development database (`notes_app`) or production database is strictly forbidden (`[FRS-0.3.3]`). Test runners execute destructive table truncation (`TRUNCATE TABLE ... CASCADE`) before/after test suites to guarantee deterministic test state.
+- **No In-Memory SQLite (`sqlite::memory:`)**: Because `apps/api` relies on native PostgreSQL 16 features (`Citext` per §2.1 and `tsvector` GIN indexes per §2.2), test harnesses (`supertest` / `playwright`) SHALL NOT substitute SQLite; they must connect to a genuine PostgreSQL 16 test database.
+
 ---
 
 ## 2. Database & Schema Architecture (`[FRS §0.4, §1, §2, §3, §5, §6]`)
@@ -203,15 +173,18 @@ The database architecture mandates PostgreSQL 16 (`[FRS-0.4]`) managed strictly 
 
 ### 2.1 Complete Prisma Schema Definition (`apps/api/prisma/schema.prisma`)
 
+> **Fix applied (v1.4):** `citext` is now a first-class Prisma native type via `previewFeatures = ["postgresqlExtensions"]` and `extensions = [citext]` on the datasource, with `@db.Citext` on `User.email` and `Tag.name`. Previously this document relied on a raw-SQL `ALTER TABLE ... TYPE citext` applied *outside* the schema file — since Prisma's schema had no knowledge of the extension, the next `prisma migrate dev` diff could detect a "drift" and silently generate a migration reverting the column back to `varchar`, quietly breaking FRS-1.1.2 / FRS-3.4 case-insensitive uniqueness in production. Declaring it natively in the schema removes that entire failure class.
+
 ```prisma
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [citext]
 }
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearchPostgres"]
+  previewFeatures = ["fullTextSearchPostgres", "postgresqlExtensions"]
 }
 
 enum OtpType {
@@ -227,7 +200,7 @@ enum OtpStatus {
 
 model User {
   id              String         @id @default(uuid()) @db.Uuid
-  email           String         @unique @db.VarChar(255)
+  email           String         @unique @db.Citext             // [FRS-1.1.2] native citext, no raw-SQL drift risk
   passwordHash    String         @map("password_hash") @db.VarChar(255)
   isVerified      Boolean        @default(false) @map("is_verified")
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -307,7 +280,7 @@ model Note {
 model Tag {
   id              String         @id @default(uuid()) @db.Uuid
   userId          String         @map("user_id") @db.Uuid
-  name            String         @db.VarChar(50)
+  name            String         @db.Citext                     // [FRS-3.4] native citext, no raw-SQL drift risk
   color           String         @default("#6B7280") @db.VarChar(9)
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -350,7 +323,7 @@ model ShareLink {
   id              String         @id @default(uuid()) @db.Uuid
   noteId          String         @map("note_id") @db.Uuid
   token           String         @unique @db.VarChar(64)
-  viewCount       Int            @default(0) @map("view_count")
+  viewCount       Int            @default(0) @map("view_count")  // [FRS-5.4] lives here, not on Note
   expiresAt       DateTime       @map("expires_at") @db.Timestamptz(6)
   revokedAt       DateTime?      @map("revoked_at") @db.Timestamptz(6)
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -367,15 +340,12 @@ model ShareLink {
 
 ### 2.2 Raw SQL Migrations & Native PostgreSQL Extensions (`[FRS-0.4]`)
 
-Because Prisma Schema syntax does not natively express `citext` types or `tsvector` GIN indexes (`[FRS-0.4]`), the project executes exact SQL migration instructions via `prisma migrate dev`:
+Because Prisma Schema syntax does not natively express `tsvector` GIN indexes (`citext` is now handled natively per §2.1), the project executes exact SQL migration instructions via `prisma migrate dev`:
 
-1. **Case-Insensitive Extensions & Table Constraints (`citext` & `CHECK`)**:
-   - Enable the `citext` extension: `CREATE EXTENSION IF NOT EXISTS citext;` (`[FRS-1.1.2, FRS-3.1]`).
-   - Alter columns to `citext`: `ALTER TABLE users ALTER COLUMN email TYPE citext;` and `ALTER TABLE tags ALTER COLUMN name TYPE citext;` to guarantee true per-user case-insensitive uniqueness (`[FRS-1.1.2, FRS-3.1]`).
-   - Enforce database `CHECK` constraints (`[FRS-2.1.5, FRS-2.1.6, FRS-3.4]`):
-     - `ALTER TABLE notes ADD CONSTRAINT notes_title_length_check CHECK (char_length(trim(title)) >= 1 AND char_length(title) <= 200);`
-     - `ALTER TABLE notes ADD CONSTRAINT notes_body_length_check CHECK (char_length(body) <= 100000);`
-     - `ALTER TABLE tags ADD CONSTRAINT tags_color_hex_check CHECK (color ~* '^#[0-9a-f]{6}([0-9a-f]{2})?$');`
+1. **Table Constraints (`CHECK`)** (`[FRS-2.1.5, FRS-2.1.6, FRS-3.4]`) — citext uniqueness is now enforced by the native Prisma type (§2.1), so only length/format checks remain here:
+   - `ALTER TABLE notes ADD CONSTRAINT notes_title_length_check CHECK (char_length(trim(title)) >= 1 AND char_length(title) <= 200);`
+   - `ALTER TABLE notes ADD CONSTRAINT notes_body_length_check CHECK (char_length(body) <= 100000);`
+   - `ALTER TABLE tags ADD CONSTRAINT tags_color_hex_check CHECK (color ~* '^#[0-9a-f]{6}([0-9a-f]{2})?$');`
 
 2. **Full-Text Search (`tsvector` & `GIN` Indexing — `[FRS-4.1, FRS-4.2]`)**:
    - Create the `GIN` index on `search_vector`: `CREATE INDEX notes_search_vector_gin ON notes USING GIN (search_vector);` (`[FRS-4.2]`).
@@ -384,19 +354,22 @@ Because Prisma Schema syntax does not natively express `citext` types or `tsvect
    - Attach the trigger: `CREATE TRIGGER trg_notes_search_vector_update BEFORE INSERT OR UPDATE ON notes FOR EACH ROW EXECUTE FUNCTION notes_search_vector_update();` (`[FRS-4.1]`).
 
 3. **Atomic Share-Link View Increments (`$queryRaw` — `[FRS-2.2.4, FRS-5.4, FRS-5.6]`)**:
-   - Public requests to `GET /api/v1/public/share/:token` execute an atomic single-query view count increment while enforcing non-deleted note constraints inside the database:
+
+   > **Fix applied (v1.4):** the view counter (`viewCount`) lives on `ShareLink`, not `Note` — the prior query updated `notes.view_count`, a column that does not exist and would throw at runtime on first use. Corrected below to update `share_links` and join `notes` purely for the live trash/deletion check.
+
+   Public requests to `GET /api/v1/public/share/:token` execute an atomic single-query view count increment while enforcing non-deleted note constraints inside the database:
      ```sql
-     UPDATE notes n
+     UPDATE share_links sl
      SET view_count = view_count + 1
-     FROM share_links sl
+     FROM notes n
      WHERE sl.token = $1
        AND sl.note_id = n.id
        AND sl.revoked_at IS NULL
        AND sl.expires_at > NOW()
        AND n.deleted_at IS NULL
-     RETURNING n.*, sl.expires_at;
+     RETURNING sl.view_count, sl.expires_at, n.id AS note_id, n.title, n.body;
      ```
-   - This atomic query eliminates race conditions and immediately blocks access (`returning 404`) if the parent note is moved to Stage 1 Trash (`n.deleted_at IS NULL`) or if the link is expired/revoked (`[FRS-2.2.4, FRS-5.6, FRS-8.1]`).
+   - This atomic query eliminates race conditions and immediately blocks access (`returning 404` when zero rows come back) if the parent note is moved to Stage 1 Trash (`n.deleted_at IS NULL`) or if the link is expired/revoked (`[FRS-2.2.4, FRS-5.6, FRS-8.1]`). A zero-row result is the single signal driving the "no longer available" response — the controller does not need to know *which* of the three conditions failed, matching FRS-5.6's requirement that the public viewer never be able to distinguish the cause.
 
 ---
 
@@ -474,9 +447,15 @@ To ensure unauthenticated flows (`Forgot/Reset Password`) and authenticated/regi
   To enforce exact email-level rate limiting (`[FRS-1.3.4]`) while preventing IP rotation bypasses, the middleware checks failed login attempts strictly by `email`:
   $$\text{failedCount} = \text{prisma.loginAttempt.count}(\{\text{where: } \{\text{email: req.body.email, attemptedAt: } \{\text{gte: now() - 15m}\}\}\})$$
   If `failedCount >= APP_LIMITS.LOGIN_RATE_LIMIT_MAX_ATTEMPTS (5)`, return `429 Too Many Requests` (`Too many login attempts for this email. Try again in 15 minutes [FRS-1.3.4]`).
-- **Login Execution (`[BUG-5 Fix]`)**:
+
+- **Login Execution (`[BUG-5 Fix]`, updated per FRS-1.3.4 v2.1 decision):**
+
+  > **Fix applied (v1.4):** previously *any* failure — including "account unverified" — inserted a `login_attempts` row, meaning a legitimate user retrying their own correct password on an unverified account would eventually get rate-limited alongside actual attackers. FRS-1.3.4 v2.1 resolves this: the counter tracks wrong-password attempts only. Step 2 below is now split accordingly.
+
   1. Verify `email` and `password` against `users` table.
-  2. **On Failure (`invalid password` or `unverified account`)**: Insert a failure tracking record into `login_attempts` (`prisma.loginAttempt.create({ data: { email, ipAddress: req.ip } })`). If account unverified, return `403 Forbidden` (`Account not verified`); otherwise return `401 Unauthorized` (`Invalid credentials`).
+  2. **On Failure**:
+     - If the password is **wrong** (regardless of verification state): insert a failure tracking record (`prisma.loginAttempt.create({ data: { email, ipAddress: req.ip } })`), then return `401 Unauthorized` (`Invalid credentials`).
+     - If the password is **correct** but `isVerified === false`: **do not** insert a `login_attempts` row (this is a deterministic state check, not a guessing signal — FRS-1.3.4 v2.1), return `403 Forbidden` (`Account not verified`).
   3. **On Success**: Atomically clear consecutive failed attempts via `prisma.loginAttempt.deleteMany({ where: { email } })` (`[BUG-5 Fix]`), revoke prior active `refresh_sessions` for that device (`userAgent`), create new `RefreshSession`, set `HttpOnly` cookie (`refreshToken`), and return `200 OK` `{ accessToken, user }` (`[FRS-1.3.1]`).
 
 ---
@@ -504,7 +483,7 @@ All note operations strictly enforce owner isolation (`where: { userId }`) and p
 To support uninterrupted rich-text note organization (`[FRS-3.1]`), the frontend and backend coordinate seamless "Fly Tag" creation:
 
 - **Frontend Flow (`TagCombobox.tsx`)**: As the user types a tag string (`e.g. "DevOps"`), the UI checks existing tags. If no match exists, a `"Create new tag: 'DevOps'"` option appears. Upon selection, the frontend immediately posts `POST /api/v1/tags` (`{ name: "DevOps", color: "#6B7280" }`).
-- **Backend Flow (`TagService.createTag`)**: Validates exact unique name via `citext` (`[FRS-3.1]`) and `#RRGGBB` color regex (`[FRS-3.4]`). If tag already exists for the workspace, returns the existing tag (`200 OK` or `409 Conflict` handled gracefully); otherwise creates the `Tag` (`201 Created`) and returns the new `TagResponse`. The frontend immediately appends the new `Tag.id` to the note's active tag list (`[FRS-3.1]`).
+- **Backend Flow (`TagService.createTag`)**: Validates exact unique name via native `Citext` (`[FRS-3.1]`, §2.1) and `#RRGGBB` color regex (`[FRS-3.4]`). If tag already exists for the workspace, returns the existing tag (`200 OK` or `409 Conflict` handled gracefully); otherwise creates the `Tag` (`201 Created`) and returns the new `TagResponse`. The frontend immediately appends the new `Tag.id` to the note's active tag list (`[FRS-3.1]`).
 
 ---
 
@@ -592,7 +571,7 @@ As mandated by `[FRS-2.3.6]`, the Trash listing query (`GET /api/v1/notes/trash`
 
 ### 5.3 Unified Nightly Cleanup Job (`[FRS-8a.1 - FRS-8a.5]`)
 
-The backend schedules a unified, idempotent `node-cron` job executing nightly at 03:00 AM UTC (`[FRS-8a.3]`). It sequentially purges all expired data categories across the database in a single pass without locking active user sessions (`[FRS-8a.4]`):
+The backend schedules a unified, idempotent `node-cron` job executing nightly at 03:00 AM UTC (`[FRS-8a.3]`). It sequentially purges all expired data categories across the database in a single pass without locking active user sessions (`[FRS-8a.4]`). This job's 5 passes correspond exactly to the 5 categories in **FRS-8a.2 v2.1** (Trash Stage 2, versions, OTPs, login attempts, refresh sessions — the refresh-session pass already existed here in v1.3 and was simply missing from the FRS-8a.2 list until this revision):
 
 1. **Pass 1 — Stage 2 Trash Permanent Purge (`[FRS-2.2.6, FRS-8a.1]`)**:
    - Computes exact summation threshold:
@@ -612,7 +591,7 @@ The backend schedules a unified, idempotent `node-cron` job executing nightly at
        );
      ```
 
-3. **Pass 3 — Expired & Consumed OTP Purge (`[FRS §10 Row 17, FRS-8a.2, BUG-2 Fix]`)**:
+3. **Pass 3 — Expired & Consumed OTP Purge (`[FRS §8a.2, BUG-2 Fix]`)**:
    - Computes 24-hour retention threshold: $\text{otpCutoff} = \text{now()} - \text{APP\_LIMITS.STALE\_RECORD\_PURGE\_HOURS (24h)}$.
    - Strictly enforces that `CONSUMED` and `INVALIDATED` records must be at least 24 hours old before deletion (`[BUG-2 Fix]`):
      ```typescript
@@ -662,22 +641,41 @@ To maintain strict compliance across all development phases (`Tickets AB-1001 to
 
 ### 6.2 Slash Commands & Sub-Agents Architecture (`/start - /pr`, `reviewer.md`, `test-writer.md` — `[FRS-0.3]`)
 
-OpenSpec (`@fission-ai/openspec`) slash commands (`[FRS-0.3]`) orchestrate the development lifecycle inside `.claude/commands/`:
+#### OpenSpec Workspace Hierarchy & Spec-Driven Lifecycle (`@fission-ai/openspec` — `[FRS-0.3]`)
+
+Every single feature or infrastructure ticket (`AB-1001` to `AB-1016`) MUST execute strictly through the **OpenSpec (`@fission-ai/openspec`) Spec-Driven Development (`SDD`) workflow**:
+
+1. **Workspace Directory Structure (`openspec/`)**:
+   - `openspec/config.yaml`: Core configuration and validation parameters for `@fission-ai/openspec`.
+   - `openspec/changes/`: Houses active specification proposals for in-progress tickets (e.g., `openspec/changes/AB-1002/` containing `spec.md`, `delta-openapi.yaml`, and `tasks.md`).
+   - `openspec/archive/`: Houses finalized, reviewed, and merged specifications (`[Rule 18]`). Running `openspec archive AB-xxxx` migrates the completed spec from `changes/` to `archive/`.
+   - `openspec/specs/`: Canonical domain specs synthesized over time across the monorepo lifecycle.
+2. **Mandatory SDD Execution Loop (`[Rules 1–3, 18, DoD]`)**:
+   - **`/spec AB-xxxx` (`Rule 1`)**: Scaffolds exact behavioral scenarios and `delta-openapi.yaml` inside `openspec/changes/AB-xxxx/`.
+   - **Review Delta Spec (`Rule 2`)**: `delta-openapi.yaml` must be human-reviewed and approved before generating the technical plan.
+   - **`/plan` → `/tasks` (`Rule 3`)**: Technical plan approved → broken into trackable `tasks.md`.
+   - **`/implement` & Validation (`DoD`)**: During and after implementation, `openspec validate` is executed to guarantee 100% adherence between code and the approved delta spec.
+   - **`/review AB-xxxx` (`Rule 16–17`)**: Read-only `reviewer` sub-agent checks compliance in a clean terminal (`all ✅ required`).
+   - **`openspec archive AB-xxxx` (`Rule 18`)**: Immediately before raising the pull request (`/pr`), the specification is archived (`changes/AB-xxxx` → `archive/AB-xxxx`).
+
+The root-level `.claude/` directory (`/.claude/`) houses the custom slash commands (`commands/`), read-only sub-agents (`agents/`), skills (`skills/`), and MCP configurations (`settings.json`). The slash commands orchestrate the OpenSpec development lifecycle:
 
 | Command      | Execution Workflow & Spec Task                                                                                                                          |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/start`     | Inspect workspace state, verify Node v24/PostgreSQL 16, run `pnpm install --frozen-lockfile`, and check active branch.                                  |
+| `/start`     | Inspect workspace state, verify Node v22/PostgreSQL 16, run `pnpm install --frozen-lockfile`, and check active branch.                                  |
 | `/spec`      | Parse target ticket `AB-10xx`, extract exact `[FRS-x.y.z]` requirements, and generate structured behavioral specification scenarios (`spec.md`).        |
 | `/plan`      | Map `spec.md` against `SDS.md` architectural contracts and generate step-by-step technical implementation plan (`implementation_plan.md`).              |
 | `/tasks`     | Deconstruct `implementation_plan.md` into granular, trackable `task.md` checklist items (`[ ]`, `[/]`, `[x]`).                                          |
 | `/implement` | Execute code changes cleanly across layered architecture (`routers -> controllers -> services -> repositories -> shared`).                              |
 | `/review`    | Dispatch read-only `reviewer.md` sub-agent to audit code changes against `FRS.md` and `SDS.md` for 100% compliance.                                     |
-| `/pr`        | Run CI suite (`pnpm turbo run lint typecheck build test`), format canonical commit header (`feat(scope): description AB#ticket`), and generate PR body. |
+| `/pr`        | Run verification suite (`pnpm turbo run lint typecheck build test`), format canonical commit header (`feat(scope): description AB#ticket`), and generate PR body. |
 
 #### Read-Only Sub-Agents (`.claude/agents/`)
 
-- **`reviewer.md`**: Independent read-only compliance checker. Scans every pull request diff to verify that: (1) no token is written to `localStorage`, (2) every route uses `/api/v1`, (3) error codes match `API_ERROR_CODES`, and (4) exact `[FRS-x.y.z]` traceability IDs are documented in PR descriptions.
+- **`reviewer.md`**: Independent read-only compliance checker. Scans every pull request diff to verify that: (1) no token is written to `localStorage`, (2) every route uses `/api/v1`, (3) error codes match `API_ERROR_CODES`, (4) exact `[FRS-x.y.z]` traceability IDs are documented in PR descriptions, (5) generated tests trace to `FRS-x.y.z` requirement IDs and this document's contracts — **not** to the FRS Acceptance Criteria checklist wording (`[FRS-0.3.2]`), and (6) all `supertest` and `playwright` tests target an isolated test database (`notes_app_test` / `.env.test` / Testcontainers) with zero connection to `notes_app` or SQLite (`[FRS-0.3.3]`).
 - **`test-writer.md`**: Dedicated test engineering sub-agent. Dispatched immediately upon `/spec` completion to autonomously write comprehensive unit, contract (`supertest`), and E2E (`playwright`) tests decoupled from implementation code.
+  - **Input-source constraint (`[FRS-0.3.2]`, binding):** `test-writer.md` SHALL read test scenarios from (a) the numbered `FRS-x.y.z` requirement text, including every SHALL statement, Error Scenario, and Out-of-Scope boundary, and (b) this document's API/DB contracts (route table, schemas, DB constraints). It SHALL NOT open, quote, or lightly reword the FRS "Acceptance Criteria" checklist sections as a source of test names or assertions — those checklists are compressed reviewer sign-off summaries, not test specs, and mechanically expanding them produces shallow coverage (one test per checklist line) that misses boundary values, concurrency cases, and negative-path combinations the checklist wording had no room to enumerate. Example: for FRS-1.3.4, the checklist says one line ("5 failed logins/15 min → 6th rejected"); `test-writer.md` is expected to independently produce tests for the 4th attempt (still allowed), the 5th (triggers lock), the 6th (rejected), the window boundary (14:59 vs 15:01 since first attempt), and isolation between two different emails from the same IP — none of which the one-line checklist spelled out.
+  - **Test database isolation constraint (`[FRS-0.3.3]`, binding):** `test-writer.md` SHALL configure all `supertest` contract and `playwright` E2E test suites to load `.env.test` (targeting `notes_app_test`) or spin up `@testcontainers/postgresql` before executing test queries. It SHALL NOT allow tests to execute against `notes_app` or `sqlite::memory:`.
 
 ---
 
@@ -693,15 +691,15 @@ To prevent AI hallucination of deprecated or non-existent library APIs across mo
 
 Every HTTP route is namespace-versioned under `/api/v1` (`[FRS-8.6]`) and backed by interactive Swagger documentation at `/api/v1/docs` (`[FRS-8.7]`).
 
-> **Architectural Note on `FRS.md` Ticket Mapping Table Row 8 (`AB-1016`):**  
-> Row 8 of the `FRS.md` Ticket Mapping table cites `[FRS §10 DOD]` for E2E Full User Journey verification (`AB-1016`). Note that `FRS §10` is the **Open Decisions Log**, while the actual Definition of Done (`DOD`) lives in the main Assignment specification. When running `/spec AB-1016` and implementing verification tests (`playwright` / E2E), developers and AI sub-agents (`test-writer.md`) SHALL verify against the complete E2E user journey across all FRS sections (`§1` through `§8a`) alongside the Assignment DOD criteria (`[FRS §10 DOD citation note]`).
+> **Architectural Note on `FRS.md` Ticket Mapping Table Row 8 (`AB-1016`):**
+> `AB-1016` E2E verification cites the Assignment's Definition of Done alongside FRS §1 through §8a in full. When running `/spec AB-1016` and implementing verification tests (`playwright` / E2E), developers and `test-writer.md` SHALL verify against the complete E2E user journey across all FRS sections alongside the Assignment DOD criteria — again reading requirement text and this route matrix directly, not the FRS Acceptance Criteria checklists (`[FRS-0.3.2]`).
 
 | Method     | Endpoint Path                             | Auth?       | Request DTO Schema (`packages/shared`)                                | Response DTO / Description & FRS Mapping                                                                                                                                                     |
-| ---------- | ----------------------------------------- | ----------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ---------- | ------------------------------------------ | ----------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **POST**   | `/api/v1/auth/register`                   | No          | `registerSchema` (`email, password`)                                  | `201 Created` (`New user [BUG-6 Fix]`) OR `200 OK` (`Re-triggered unverified account [FRS-1.1.5]`) `{ success: true, isReTriggered: boolean, userId }`. Logs OTP to console (`[FRS-1.2.1]`). |
 | **POST**   | `/api/v1/auth/verify-otp`                 | No          | `verifyOtpSchema` (`userId` OR `email`, `code, type` — `[BUG-4 Fix]`) | `200 OK` `{ success: true, message }`. Enforces 3-attempt brute force & marks OTP `CONSUMED` (`[FRS-1.2.2, FRS-1.2.4a]`).                                                                    |
 | **POST**   | `/api/v1/auth/resend-otp`                 | No          | `resendOtpSchema` (`userId` OR `email`, `type` — `[BUG-4 Fix]`)       | `200 OK` (`60s` cooldown checked `[FRS-1.2.3]`).                                                                                                                                             |
-| **POST**   | `/api/v1/auth/login`                      | No          | `loginSchema` (`email, password`)                                     | `200 OK` `{ accessToken, user }` + `HttpOnly` refresh cookie. Rate-limited at 5 attempts (`[FRS-1.3.1, FRS-1.3.4, FRS-1.3.5]`).                                                              |
+| **POST**   | `/api/v1/auth/login`                      | No          | `loginSchema` (`email, password`)                                     | `200 OK` `{ accessToken, user }` + `HttpOnly` refresh cookie. Rate-limited at 5 wrong-password attempts; unverified-but-correct-password does not count (`[FRS-1.3.1, FRS-1.3.4 v2.1, FRS-1.3.5]`). |
 | **POST**   | `/api/v1/auth/refresh`                    | No (Cookie) | None (Reads `refreshToken` cookie)                                    | `200 OK` `{ accessToken, user }` + rotated `HttpOnly` cookie (`[FRS-1.3.3, FRS-1.3.5]`).                                                                                                     |
 | **POST**   | `/api/v1/auth/logout`                     | Yes         | None                                                                  | `200 OK` (`Revokes refresh token & clears cookie [FRS-1.4.1]`).                                                                                                                              |
 | **POST**   | `/api/v1/auth/forgot-password`            | No          | `forgotPasswordSchema` (`email`)                                      | `200 OK` `{ success: true, userId, message }` (`[BUG-4 Fix]`). Generates reset OTP (`[FRS-1.5.1, FRS-1.5.2]`).                                                                               |
@@ -724,42 +722,42 @@ Every HTTP route is namespace-versioned under `/api/v1` (`[FRS-8.6]`) and backed
 | **PATCH**  | `/api/v1/tags/:id`                        | Yes         | `updateTagSchema` (`name?, color?`)                                   | `200 OK` `{ TagResponse }` (`[FRS-3.1]`).                                                                                                                                                    |
 | **DELETE** | `/api/v1/tags/:id`                        | Yes         | URL Param `id: UUID`                                                  | `200 OK`. Removes tag without deleting associated notes (`[FRS-3.3]`).                                                                                                                       |
 | **GET**    | `/api/v1/search`                          | Yes         | Query params (`q, page, limit`)                                       | `200 OK` `{ PaginatedSearchResponse }`. Full-text search with sentinel highlights (`[FRS-4.1, FRS-4.2.1]`).                                                                                  |
-| **GET**    | `/api/v1/public/share/:token`             | **No**      | URL Param `token: string`                                             | `200 OK` `{ PublicNoteResponse }`. Executes atomic view increment & live `deleted_at IS NULL` check (`[FRS-5.4, FRS-2.2.4, FRS-8.1]`).                                                       |
+| **GET**    | `/api/v1/public/share/:token`             | **No**      | URL Param `token: string`                                             | `200 OK` `{ PublicNoteResponse }`. Executes atomic view increment on `share_links` & live `notes.deleted_at IS NULL` check, `404` on zero rows returned (`[FRS-5.4, FRS-2.2.4, FRS-8.1]`).  |
 
 ---
 
 ## 8. Complete FRS-to-SDS Traceability Matrix
 
-Every requirement in `FRS.md` v1.2 maps directly to an architectural and data contract component in this specification:
+Every requirement in `FRS.md` v2.1 maps directly to an architectural and data contract component in this specification:
 
 | FRS Requirement ID     | Requirement Description Summary                                             | Exact Technical Mapping in `SDS.md`                                                                               |
-| ---------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| ----------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `[FRS-0.1]`            | `pnpm workspaces` + `Turborepo` monorepo (`api`, `web`, `shared`, `config`) | Section 1.1: Complete monorepo tree, `turbo.json` (`^build`), and runtime boundaries.                             |
 | `[FRS-0.2]`            | AI Governance Brain (`AGENTS.md`, `CLAUDE.md`)                              | Section 6.1: Exact lines and domain specific instructions across root and package `CLAUDE.md`.                    |
 | `[FRS-0.3]`            | OpenSpec Slash commands & read-only sub-agents                              | Section 6.2: Complete slash command lifecycle table (`/start - /pr`) + `reviewer.md` and `test-writer.md`.        |
 | `[FRS-0.3.1]`          | Live documentation verification rule against hallucination                  | Section 6.3: Mandatory MCP documentation query rule before third-party API code generation.                       |
-| `[FRS-0.4]`            | PostgreSQL 16 + Docker + Prisma ORM baseline                                | Section 1.5 (`docker-compose.yml`) & Section 2.1 (`schema.prisma` plus raw SQL extensions migration).             |
+| `[FRS-0.3.2]`          | `test-writer.md` must not source tests from Acceptance Criteria wording      | Section 6.2: Binding input-source constraint + worked example on `FRS-1.3.4`.                                     |
+| `[FRS-0.3.3]`          | Isolated test database (`notes_app_test`) for `supertest` and `playwright`  | Section 1.5 (`Test Database Isolation Contract`) & Section 6.2 (`test-writer.md` / `reviewer.md` rules).         |
+| `[FRS-0.4]`            | PostgreSQL 16 + Docker + Prisma ORM baseline                                | Section 1.5 (`docker-compose.yml`) & Section 2.1 (`schema.prisma`, native `citext` extension).                   |
 | `[FRS-0.5, Rule 14]`   | Strict git hooks and canonical commit message format                        | Section 1.3: `Husky` + `lint-staged` + `commitlint.config.js` enforcing `feat(scope): description AB#ticket`.     |
-| `[FRS-0.6, Rule 12]`   | GitHub Actions CI workflow (`lint, typecheck, tsup build, test`)            | Section 1.4: Concise `.github/workflows/ci.yml` (`pnpm turbo run ...` + `tsup` build + `tsc` typecheck).          |
-| `[FRS-1.1.1 - 1.1.4]`  | Registration, case-insensitive email, password complexity                   | Section 2.1 (`citext`), Section 3.2, and `createNoteSchema` validation definitions.                               |
+| `[FRS-0.6, Rule 12]`   | Local Verification & Quality Gates (`lint, typecheck, tsup build, test`)            | Section 1.4: Quality gates (`pnpm turbo run ...` + `tsup` build + `tsc` typecheck + `≥80% coverage`).             |
+| `[FRS-1.1.1 - 1.1.4]`  | Registration, case-insensitive email, password complexity                   | Section 2.1 (native `Citext`), Section 3.2, and `createNoteSchema` validation definitions.                        |
 | `[FRS-1.1.5]`          | Duplicate registration with unverified account re-triggers OTP              | Section 3.2: Exact `AuthService.register` implementation returning `200 OK` + 60s cooldown check.                 |
 | `[FRS-1.2.1 - 1.2.4]`  | 6-digit OTP verification, 10 min expiry, 3 max attempts                     | Section 1.2 (`APP_LIMITS`), Section 2.1 (`OtpCode` model), Section 3.2 (`verifyOtp` logic).                       |
 | `[FRS-1.2.4a]`         | Distinct OTP terminal states (`CONSUMED` vs `INVALIDATED`)                  | Section 2.1 (`OtpStatus` enum) & Section 3.2 diagram and service state updates.                                   |
-| `[FRS-1.3.1 - 1.3.5]`  | Login tokens, rate-limiting (5 in 15m), `HttpOnly` + JS memory              | Section 3.1 (`authStore` vs cookie strategy), Section 3.2 (`checkLoginRateLimit` middleware).                     |
+| `[FRS-1.3.1 - 1.3.5]`  | Login tokens, rate-limiting (5 wrong-password in 15m, unverified excluded), `HttpOnly` + JS memory | Section 3.1 (`authStore` vs cookie strategy), Section 3.2 (`checkLoginRateLimit` middleware, v1.4 split logic).   |
 | `[FRS-1.4.1]`          | Logout invalidates exact refresh token                                      | Section 7: `POST /api/v1/auth/logout` route matrix and database token revocation (`revokedAt = now()`).           |
 | `[FRS-1.5.1 - 1.5.6]`  | Password reset OTP, single-use, revokes all user sessions                   | Section 2.1 (`OtpType.PASSWORD_RESET`), Section 3.2 (`verifyOtp`), Section 7 route contracts.                     |
 | `[FRS-2.1.1 - 2.1.6]`  | Note CRUD, owner scoping, title/body length checks (`200 / 100k`)           | Section 2.1 (`@db.VarChar(200)`, `@db.Text`), Section 2.2 (`CHECK` constraints), Section 4.1 flow.                |
 | `[FRS-2.2.1 - 2.2.8]`  | Two-stage Trash bin (`30d Stage 1 + 30d Stage 2`), instant delete           | Section 2.1 (`deletedAt`), Section 5.3 (`cleanup.job.ts`), Section 7 `trash/restore/permanent` endpoints.         |
-| `[FRS-2.2.4, FRS-8.1]` | Live share-link access check verifying `deletedAt == null`                  | Section 2.2: Atomic `$queryRaw` query `accessAndIncrementShareLink` verifying `AND n.deleted_at IS NULL`.         |
+| `[FRS-2.2.4, FRS-8.1]` | Live share-link access check verifying `deletedAt == null`                  | Section 2.2: Corrected atomic `$queryRaw` query updating `share_links.view_count`, joined against `notes.deleted_at IS NULL`. |
 | `[FRS-2.3.1 - 2.3.6]`  | Pagination, server tiebreakers, `tagMode=ALL` default, Trash 30d window     | Section 5.1 (`filterNotesSchema`, `listActiveNotes`), Section 5.2 (`listTrashNotes` Stage-1 window).              |
-| `[FRS-3.1 - 3.4]`      | Tags CRUD, Fly Tag creation, unique names, live note counts                 | Section 2.1 (`Tag.name citext`), Section 4.2 (`TagCombobox`), Section 7 route matrix (`GET /api/v1/tags`).        |
+| `[FRS-3.1 - 3.4]`      | Tags CRUD, Fly Tag creation, unique names, live note counts                 | Section 2.1 (`Tag.name` native `Citext`), Section 4.2 (`TagCombobox`), Section 7 route matrix (`GET /api/v1/tags`). |
 | `[FRS-4.1 - 4.5]`      | Full-text search, `tsvector` GIN index, custom sentinel highlights          | Section 2.2 (`search_vector tsvector`), Section 4.3 (`ts_headline` sentinels & `SnippetHighlight.tsx`).           |
-| `[FRS-5.1 - 5.6]`      | Public share links, 1-30d expiry, atomic view count, `404` errors           | Section 2.1 (`ShareLink`), Section 2.2 (`$queryRaw` atomic increment), Section 7 live access checks.              |
+| `[FRS-5.1 - 5.6]`      | Public share links, 1-30d expiry, atomic view count, `404` errors           | Section 2.1 (`ShareLink.viewCount`), Section 2.2 (corrected `$queryRaw` atomic increment on `share_links`), Section 7. |
 | `[FRS-6.1 - 6.5]`      | Version history snapshots, 5-minute autosave throttling, 90d purge          | Section 1.2 (`APP_LIMITS`), Section 4.4 (`updateNote` throttle logic), Section 5.3 (`cleanup.job.ts`).            |
 | `[FRS-7.1 - 7.5]`      | Frontend TipTap background autosave, responsive UI, confirmations           | Section 4.5 (`Frontend UX Parity`), Section 4.4 (`updateNote` hook), Section 1.2 (`UI_COPY` prompts).             |
 | `[FRS-8.1 - 8.7]`      | Cross-cutting rules: UTC timestamps, server-side search/filter, OpenAPI     | Section 1.1 (`app.ts` Swagger), Section 2.1 (`@db.Timestamptz(6)`), Section 5.1 TanStack Query refetching.        |
-| `[FRS-8a.1 - 8a.5]`    | Unified automated nightly scheduled cleanup job (`0 3 * * *`)               | Section 5.3: Exact 5-pass `cleanup.job.ts` cron implementation purging Stage 2, versions, OTPs, sessions, logins. |
+| `[FRS-8a.1 - 8a.5]`    | Unified automated nightly scheduled cleanup job (`0 3 * * *`), 5 categories | Section 5.3: Exact 5-pass `cleanup.job.ts` cron implementation purging Stage 2, versions, OTPs, sessions, logins. |
 
 ---
-
-**This Software Design Specification is locked, rigorously complete, concise, and strictly traceable to `FRS.md` v1.2. Developers building Tickets `AB-1001` through `AB-1016` can begin code execution directly from this blueprint.**
