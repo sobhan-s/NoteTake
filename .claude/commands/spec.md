@@ -5,6 +5,7 @@ Before running `openspec proposal`, verify that `$ARGUMENTS` contains both the t
 If `$ARGUMENTS` is only a bare ticket ID (like `AB-1001`), DO NOT create a bare folder `openspec/changes/AB-1001/`. Instead, inspect the ticket scope from `docs/FRS.md` and automatically append a concise, descriptive kebab-case name to `$ARGUMENTS` before executing `openspec proposal`.
 
 ## Preconditions & Setup
+
 1. Read canonical specification documents:
    - `docs/FRS.md` (`[FRS-x.y.z]` numbered requirement text)
    - `docs/SDS.md` (`API/DB` schemas, route table, `CHECK/GIN` constraints, status codes)
@@ -16,26 +17,24 @@ If `$ARGUMENTS` is only a bare ticket ID (like `AB-1001`), DO NOT create a bare 
 
 ---
 
-## Spec Generation Rules (`[FRS-0.3, 1-to-1 Rule]`)
-Generate **ONLY one single file (`spec.md`)** inside `openspec/changes/$ARGUMENTS/spec.md` (`[Rule 1]`). Do NOT split across `proposal.md` or `specs/` directories. Everything must live cleanly in `spec.md`.
+## Spec Generation Rules (`[FRS-0.3, OpenSpec Lifecycle Protocol]`)
 
-Inside `openspec/changes/$ARGUMENTS/spec.md`, structure the document with two exact sections:
-### Section 1: Proposal Summary & Scope Boundaries
-- **Objective & Traceability**: State exact target requirements (`[FRS-x.y.z]`) and architectural mappings (`[SDS §x.y]`).
-- **Explicit Scope Boundaries**: Must include an explicit `Out of Scope` section.
-- **CRITICAL NOTEAPP RULES Integration**:
-  - Confirm all API request/response shapes match `@shared/core` (`packages/shared/src/schemas/` & `src/types/`).
-  - Confirm backend endpoints use `/api/v1/...` namespace and unified `{ success: true, data }` response wrappers (`[FRS-8.6]`).
-  - Confirm authentication tokens live purely in `useAuthStore` JS memory + `HttpOnly` refresh cookies (`[FRS-1.3.5]`).
-  - Confirm soft-delete state transitions set `deletedAt = now()` (`Stage 1 Trash [FRS-2.2]`).
+When generating a proposal (`/spec $ARGUMENTS`), adhere strictly to the OpenSpec three-pattern lifecycle structure (`changes/` for active proposals vs `archive/` for separated top-level archived proposals vs `specs/` for living canonical specifications):
 
-### Section 2: Behavioral Specification (`SHALL/MUST` Scenarios)
-- **Precise RFC 2119 Terminology**: Every behavioral scenario must use exact `SHALL/MUST` (never `should`).
-- Group scenarios cleanly under `ADDED Scenarios`, `MODIFIED Scenarios`, or `REMOVED Scenarios`.
+1. **Active Change Proposal Pattern (`openspec/changes/$ARGUMENTS/`)**:
+   Create two canonical artifacts inside the proposal directory:
+   - `openspec/changes/$ARGUMENTS/proposal.md`: Executive summary, objective, target requirements (`[FRS-x.y.z]`), architectural mappings (`[SDS §x.y]`), and explicit `Out of Scope` boundaries.
+   - `openspec/changes/$ARGUMENTS/specs/<domain>/spec.md`: The exact RFC 2119 `SHALL/MUST` behavioral deltas grouped cleanly under `ADDED Scenarios`, `MODIFIED Scenarios`, or `REMOVED Scenarios`.
 
-**Clarifying Questions**: Before or alongside outputting `spec.md`, ask minimum 3, maximum 8 clarifying questions to identify edge cases, error scenarios, and potential drift before user sign-off.
+2. **CRITICAL NOTEAPP RULES Integration across Proposal & Spec**:
+   - Confirm all API request/response shapes match `@shared/core` (`packages/shared/src/schemas/` & `src/types/`).
+   - Confirm backend endpoints use `/api/v1/...` namespace and unified `{ success: true, data }` response wrappers (`[FRS-8.6]`).
+   - Confirm authentication tokens live purely in `useAuthStore` JS memory + `HttpOnly` refresh cookies (`[FRS-1.3.5]`).
+   - Confirm soft-delete state transitions set `deletedAt = now()` (`Stage 1 Trash [FRS-2.2]`).
 
-Show the complete `spec.md` content to the user.
-Do NOT proceed to `/plan` or `/implement` until the user explicitly reviews and approves `spec.md` (`[Rule 2]`).
+3. **Clarifying Questions**: Before or alongside outputting `proposal.md` and `specs/<domain>/spec.md`, ask minimum 3, maximum 8 clarifying questions to identify edge cases, error scenarios, and potential drift before user sign-off.
+
+Show the complete `proposal.md` and `specs/<domain>/spec.md` content to the user.
+Do NOT proceed to `/plan` or `/implement` until the user explicitly reviews and approves the proposal (`[Rule 2]`).
 
 Format: `/spec AB-xxxx-short-description`

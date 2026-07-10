@@ -16,8 +16,7 @@
 
 ## Phase 0: Orchestrator Loop Readiness
 
-- [x] Create `openspec/changes/ab-1001-project-setup-monorepo/review-log.md` (empty, headed `# Review Log — AB-1001`) for the `/implement` Main Claude → Tester → Reviewer → Triage loop to append to (`[FRS-0.3]`).
-- [x] Create `openspec/changes/ab-1001-project-setup-monorepo/fix-bundles.md` (empty, headed `# Fix Bundles — AB-1001`) for the same loop (`[FRS-0.3]`).
+- [x] Create `openspec/changes/ab-1001-project-setup-monorepo/review-log.md` (empty, headed `# Review Log — AB-1001`) for the `/implement` Main Claude → Tester → Reviewer → Triage loop to append to (`[FRS-0.3]`). Note: `review-log.md` is the sole tracking log (`fix-bundles` are not used).
 
 ## Phase 1: Foundation & Shared Tier (`@shared/core`, root config, DB schema)
 
@@ -84,8 +83,8 @@ _(No `[ ]` item in this phase implements FRS feature behavior — `AB-1001` is I
 
 - [x] Run `openspec validate` against `openspec/changes/ab-1001-project-setup-monorepo/` (`spec.md`, `plan.md`, `tasks.md`) (`[FRS-0.3]`). **Note**: the real `openspec` CLI requires native `proposal.md` + `specs/<capability>/spec.md` (ADDED Requirements + Scenario WHEN/THEN blocks), not `spec.md` directly — added `proposal.md` and `specs/project-setup-infrastructure/spec.md` (translated from `spec.md`'s content, no decisions changed) so `openspec validate --strict` passes cleanly.
 - [x] Run `/review ab-1001-project-setup-monorepo` — `reviewer` agent confirmed all mandatory checks ✅ PASSED (`[FRS-0.3]`).
-- [x] Append reviewer output to `review-log.md`; one `⚠️ DRIFTED` (stale `--coverage` prose in this file, now fixed above) and one `📋 FRS GAP` (Phase 4 itself incomplete at review time) were non-blocking process findings, not code defects — no fix-bundle needed, fixed directly (`[FRS-0.3]`).
-- [x] Confirm `review-log.md` reports all `✅ PASSED` on every mandatory check, with the two non-blocking process notes resolved; `fix-bundles.md` remains empty (`[FRS-0.3]`).
+- [x] Append reviewer output to `review-log.md`; one `⚠️ DRIFTED` (stale `--coverage` prose in this file, now fixed above) and one `📋 FRS GAP` (Phase 4 itself incomplete at review time) were non-blocking process findings, not code defects — logged in `review-log.md` and fixed directly (`[FRS-0.3]`).
+- [x] Confirm `review-log.md` reports all `✅ PASSED` on every mandatory check (`[FRS-0.3]`).
 - [ ] Run `openspec archive ab-1001-project-setup-monorepo` — **`[y/n]` gate: file move/overwrite per `CLAUDE.md §2`** (`[FRS-0.3]`).
 
 ---

@@ -28,9 +28,9 @@ Append-only log of `reviewer` sub-agent findings for `ab-1001-project-setup-mono
 ✅ PASSED: `.claude/skills/.gitkeep` closes the directory-existence gap
 ✅ PASSED: `turbo.json` pipeline matches plan exactly
 
-### Non-blocking findings (resolved, no fix-bundle required)
+### Non-blocking findings (resolved directly)
 
 ⚠️ DRIFTED: `tasks.md` prose still stated `--passWithNoTests --coverage` for the test scripts, contradicting `plan.md §4.4/§5.2`'s corrected decision and the actually-shipped code (which was correct). **Resolved**: `tasks.md` prose corrected to match shipped code and verified version pins.
 📋 FRS GAP: Phase 4 of `tasks.md` was itself still in progress at review time (this review pass is part of completing it). **Resolved**: this is expected — review runs as part of Phase 4, not before it.
 
-**Summary**: All mandatory architectural/compliance checks passed. No 🔒 SECURITY findings (no auth/token/SQL code exists yet in this INFRA-only ticket). Both non-blocking findings were documentation-only drift within the openspec change artifacts, now corrected.
+**Summary**: All mandatory architectural/compliance checks passed. No 🔒 SECURITY findings (no auth/token/SQL code exists yet in this INFRA-only ticket). Both non-blocking findings were documentation-only drift within the openspec change artifacts, now corrected directly.
