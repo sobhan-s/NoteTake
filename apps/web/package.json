@@ -1,0 +1,29 @@
+{
+  "name": "@apps/web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@config/core": "workspace:*",
+    "typescript": "5.9.3",
+    "vite": "6.4.3",
+    "@vitejs/plugin-react": "4.7.0",
+    "vitest": "4.1.10",
+    "@vitest/coverage-v8": "4.1.10",
+    "@playwright/test": "1.61.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3"
+  }
+}
