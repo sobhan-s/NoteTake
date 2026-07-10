@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change ab-1001-project-setup-monorepo. Update Purpose after archive.
+TBD - created by archiving change AB-1001-project-setup-monorepo. Update Purpose after archive.
 
 ## Requirements
 

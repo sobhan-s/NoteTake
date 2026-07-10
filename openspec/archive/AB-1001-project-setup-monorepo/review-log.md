@@ -1,6 +1,6 @@
 # Review Log — AB-1001
 
-Append-only log of `reviewer` sub-agent findings for `ab-1001-project-setup-monorepo`.
+Append-only log of `reviewer` sub-agent findings for `AB-1001-project-setup-monorepo`.
 
 ## Review pass 1 (post-Phase 3, pre-archive)
 
