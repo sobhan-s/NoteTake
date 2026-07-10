@@ -1,0 +1,13 @@
+export const API_PATHS = {
+  BASE: "/api/v1",
+  AUTH: {
+    ROOT: "/auth",
+    REGISTER: "/register",
+    VERIFY_OTP: "/verify-otp",
+    RESEND_OTP: "/resend-otp",
+    LOGIN: "/login",
+    REFRESH: "/refresh",
+    LOGOUT: "/logout",
+    ME: "/me",
+  },
+} as const;
