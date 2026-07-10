@@ -173,7 +173,7 @@ The database architecture mandates PostgreSQL 16 (`[FRS-0.4]`) managed strictly 
 
 ### 2.1 Complete Prisma Schema Definition (`apps/api/prisma/schema.prisma`)
 
-> **Fix applied (v1.4):** `citext` is now a first-class Prisma native type via `previewFeatures = ["postgresqlExtensions"]` and `extensions = [citext]` on the datasource, with `@db.Citext` on `User.email` and `Tag.name`. Previously this document relied on a raw-SQL `ALTER TABLE ... TYPE citext` applied *outside* the schema file — since Prisma's schema had no knowledge of the extension, the next `prisma migrate dev` diff could detect a "drift" and silently generate a migration reverting the column back to `varchar`, quietly breaking FRS-1.1.2 / FRS-3.4 case-insensitive uniqueness in production. Declaring it natively in the schema removes that entire failure class.
+> **Fix applied (v1.4):** `citext` is now a first-class Prisma native type via `previewFeatures = ["postgresqlExtensions"]` and `extensions = [citext]` on the datasource, with `@db.Citext` on `User.email` and `Tag.name`. Previously this document relied on a raw-SQL `ALTER TABLE ... TYPE citext` applied _outside_ the schema file — since Prisma's schema had no knowledge of the extension, the next `prisma migrate dev` diff could detect a "drift" and silently generate a migration reverting the column back to `varchar`, quietly breaking FRS-1.1.2 / FRS-3.4 case-insensitive uniqueness in production. Declaring it natively in the schema removes that entire failure class.
 
 ```prisma
 datasource db {
@@ -358,18 +358,19 @@ Because Prisma Schema syntax does not natively express `tsvector` GIN indexes (`
    > **Fix applied (v1.4):** the view counter (`viewCount`) lives on `ShareLink`, not `Note` — the prior query updated `notes.view_count`, a column that does not exist and would throw at runtime on first use. Corrected below to update `share_links` and join `notes` purely for the live trash/deletion check.
 
    Public requests to `GET /api/v1/public/share/:token` execute an atomic single-query view count increment while enforcing non-deleted note constraints inside the database:
-     ```sql
-     UPDATE share_links sl
-     SET view_count = view_count + 1
-     FROM notes n
-     WHERE sl.token = $1
-       AND sl.note_id = n.id
-       AND sl.revoked_at IS NULL
-       AND sl.expires_at > NOW()
-       AND n.deleted_at IS NULL
-     RETURNING sl.view_count, sl.expires_at, n.id AS note_id, n.title, n.body;
-     ```
-   - This atomic query eliminates race conditions and immediately blocks access (`returning 404` when zero rows come back) if the parent note is moved to Stage 1 Trash (`n.deleted_at IS NULL`) or if the link is expired/revoked (`[FRS-2.2.4, FRS-5.6, FRS-8.1]`). A zero-row result is the single signal driving the "no longer available" response — the controller does not need to know *which* of the three conditions failed, matching FRS-5.6's requirement that the public viewer never be able to distinguish the cause.
+
+   ```sql
+   UPDATE share_links sl
+   SET view_count = view_count + 1
+   FROM notes n
+   WHERE sl.token = $1
+     AND sl.note_id = n.id
+     AND sl.revoked_at IS NULL
+     AND sl.expires_at > NOW()
+     AND n.deleted_at IS NULL
+   RETURNING sl.view_count, sl.expires_at, n.id AS note_id, n.title, n.body;
+   ```
+   - This atomic query eliminates race conditions and immediately blocks access (`returning 404` when zero rows come back) if the parent note is moved to Stage 1 Trash (`n.deleted_at IS NULL`) or if the link is expired/revoked (`[FRS-2.2.4, FRS-5.6, FRS-8.1]`). A zero-row result is the single signal driving the "no longer available" response — the controller does not need to know _which_ of the three conditions failed, matching FRS-5.6's requirement that the public viewer never be able to distinguish the cause.
 
 ---
 
@@ -392,7 +393,7 @@ Authentication follows a **Cookie & Memory** token lifecycle (`[FRS-1.3.3, FRS-1
 To ensure unauthenticated flows (`Forgot/Reset Password`) and authenticated/registration flows function seamlessly without exposing internal UUIDs or creating DTO mismatches:
 
 - `registerSchema`: `{ email: z.string().email(), password: z.string().min(8).regex(/^(?=.*[0-9])(?=.*[!@#$%^&*])/) }`
-- `verifyOtpSchema` / `resendOtpSchema`: Accepts either `userId` (UUID) or `email` along with `type`:
+- `verifyOtpSchema` / `resendOtpSchema`: Accepts either `userId` (UUID) or `email` along with `type`. **[AB-1003 update]** `type` is narrowed to `z.literal("EMAIL_VERIFICATION")` — `PASSWORD_RESET` OTP verification now lives exclusively in `reset-password` below, and requesting a new `PASSWORD_RESET` code happens exclusively via repeated `forgot-password` calls, not `resend-otp`:
 
   ```typescript
   export const verifyOtpSchema = z
@@ -400,7 +401,7 @@ To ensure unauthenticated flows (`Forgot/Reset Password`) and authenticated/regi
       userId: z.string().uuid().optional(),
       email: z.string().email().optional(),
       code: z.string().length(APP_LIMITS.OTP_LENGTH),
-      type: z.enum(["EMAIL_VERIFICATION", "PASSWORD_RESET"]),
+      type: z.literal("EMAIL_VERIFICATION"),
     })
     .refine((data) => data.userId || data.email, {
       message: "Either userId or email must be provided",
@@ -410,15 +411,16 @@ To ensure unauthenticated flows (`Forgot/Reset Password`) and authenticated/regi
     .object({
       userId: z.string().uuid().optional(),
       email: z.string().email().optional(),
-      type: z.enum(["EMAIL_VERIFICATION", "PASSWORD_RESET"]),
+      type: z.literal("EMAIL_VERIFICATION"),
     })
     .refine((data) => data.userId || data.email, {
       message: "Either userId or email must be provided",
     });
   ```
 
-- `forgotPasswordSchema`: `{ email: z.string().email() }` (Returns `200 OK` `{ success: true, userId, message }` so the UI has `userId` for optional `resend-otp` calls).
-- `resetPasswordSchema`: `{ email: z.string().email(), code: z.string().length(6), newPassword: z.string().min(8)... }`.
+- `passwordSchema`: `z.string().min(8).regex(/^(?=.*[0-9])(?=.*[!@#$%^&*])/)` — **[AB-1003 update]** extracted as a standalone export and reused verbatim by both `registerSchema.password` and `resetPasswordSchema.newPassword` (`Rule 11`); no duplicated regex.
+- `forgotPasswordSchema`: `{ email: z.string().email() }`. **[AB-1003 correction]** Returns `200 OK` `{ success: true, data: { message } }` only — no `userId` field. Per the no-email-enumeration decision (`FRS-1.5.1, FRS-1.5.3`), the response is byte-identical across nonexistent-email, cooldown-blocked, and fresh-OTP-issued outcomes; disclosing `userId` only when an account exists would itself be an enumeration side channel.
+- `resetPasswordSchema`: `{ email: z.string().email(), code: z.string().length(APP_LIMITS.OTP_LENGTH), newPassword: passwordSchema }`.
 
 #### Registration & Re-Trigger Flow (`AuthService.register` — `[FRS-1.1.1, FRS-1.1.5, BUG-6 Fix]`)
 
@@ -439,7 +441,7 @@ To ensure unauthenticated flows (`Forgot/Reset Password`) and authenticated/regi
      - If `newAttempts >= APP_LIMITS.OTP_MAX_ATTEMPTS (3)`, immediately update `OtpCode` setting `attempts = newAttempts` AND `status = INVALIDATED` (`[FRS-1.2.4a]`), commit transaction, and return `429 Too Many Requests` (`Maximum verification attempts exceeded. Please request a new code [FRS-1.2.4]`).
      - If `newAttempts < 3`, update `OtpCode.attempts = newAttempts` and return `400 Bad Request` (`Invalid OTP code. Attempts remaining: ${3 - newAttempts}`).
 3. **On Success (`CONSUMED` State — `[FRS-1.2.4a]`)**:
-   Update `OtpCode.status = CONSUMED`, update `User.isVerified = true` (or reset password if `PASSWORD_RESET`), commit transaction, and return `200 OK`.
+   Update `OtpCode.status = CONSUMED`, update `User.isVerified = true`, commit transaction, and return `200 OK`. **[AB-1003 update]** `verify-otp` now accepts only `type: 'EMAIL_VERIFICATION'` — password-reset OTP verification (updating `User.passwordHash` and revoking all sessions) lives exclusively in `reset-password`, a distinct service function documented in §7's route matrix.
 
 #### Rate-Limited Login Flow (`AuthService.login` & `checkLoginRateLimit` Middleware — `[FRS-1.3.1, FRS-1.3.4, BUG-5 Fix]`)
 
@@ -450,8 +452,7 @@ To ensure unauthenticated flows (`Forgot/Reset Password`) and authenticated/regi
 
 - **Login Execution (`[BUG-5 Fix]`, updated per FRS-1.3.4 v2.1 decision):**
 
-  > **Fix applied (v1.4):** previously *any* failure — including "account unverified" — inserted a `login_attempts` row, meaning a legitimate user retrying their own correct password on an unverified account would eventually get rate-limited alongside actual attackers. FRS-1.3.4 v2.1 resolves this: the counter tracks wrong-password attempts only. Step 2 below is now split accordingly.
-
+  > **Fix applied (v1.4):** previously _any_ failure — including "account unverified" — inserted a `login_attempts` row, meaning a legitimate user retrying their own correct password on an unverified account would eventually get rate-limited alongside actual attackers. FRS-1.3.4 v2.1 resolves this: the counter tracks wrong-password attempts only. Step 2 below is now split accordingly.
   1. Verify `email` and `password` against `users` table.
   2. **On Failure**:
      - If the password is **wrong** (regardless of verification state): insert a failure tracking record (`prisma.loginAttempt.create({ data: { email, ipAddress: req.ip } })`), then return `401 Unauthorized` (`Invalid credentials`).
@@ -660,14 +661,14 @@ Every single feature or infrastructure ticket (`AB-1001` to `AB-1016`) MUST exec
 
 The root-level `.claude/` directory (`/.claude/`) houses the custom slash commands (`commands/`), read-only sub-agents (`agents/`), skills (`skills/`), and MCP configurations (`settings.json`). The slash commands orchestrate the OpenSpec development lifecycle:
 
-| Command      | Execution Workflow & Spec Task                                                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/start`     | Inspect workspace state, load `AGENTS.md`, `CLAUDE.md`, `FRS.md`, `SDS.md`, and `ux.md`, verify Node v22/PostgreSQL 16, and enforce `AB-xxxx-descriptive-name` rule. |
-| `/spec`      | Parse target ticket `AB-xxxx-descriptive-name`, extract exact `[FRS-x.y.z]` requirements (and `ux.md` for UI), and generate ONE canonical `spec.md` file. |
-| `/plan`      | Map `spec.md` against `SDS.md` and `ux.md` architectural contracts and generate step-by-step technical implementation plan (`plan.md`).                 |
-| `/tasks`     | Deconstruct `plan.md` into granular, trackable `tasks.md` checklist items (`[ ]`, `[/]`, `[x]`) mapped to explicit `[FRS-x.y.z]` tags across Phase 1-4.   |
-| `/implement` | Execute code changes via Role-Separated Orchestrator loop (Main Claude -> `test-writer` -> `reviewer` -> Triage) across layered architecture.           |
-| `/review`    | Dispatch read-only `reviewer.md` sub-agent to audit code changes against 7-part Compliance Table (`FRS.md`, `SDS.md`, `ux.md`). Append to `review-log.md`. |
+| Command      | Execution Workflow & Spec Task                                                                                                                                                   |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/start`     | Inspect workspace state, load `AGENTS.md`, `CLAUDE.md`, `FRS.md`, `SDS.md`, and `ux.md`, verify Node v22/PostgreSQL 16, and enforce `AB-xxxx-descriptive-name` rule.             |
+| `/spec`      | Parse target ticket `AB-xxxx-descriptive-name`, extract exact `[FRS-x.y.z]` requirements (and `ux.md` for UI), and generate ONE canonical `spec.md` file.                        |
+| `/plan`      | Map `spec.md` against `SDS.md` and `ux.md` architectural contracts and generate step-by-step technical implementation plan (`plan.md`).                                          |
+| `/tasks`     | Deconstruct `plan.md` into granular, trackable `tasks.md` checklist items (`[ ]`, `[/]`, `[x]`) mapped to explicit `[FRS-x.y.z]` tags across Phase 1-4.                          |
+| `/implement` | Execute code changes via Role-Separated Orchestrator loop (Main Claude -> `test-writer` -> `reviewer` -> Triage) across layered architecture.                                    |
+| `/review`    | Dispatch read-only `reviewer.md` sub-agent to audit code changes against 7-part Compliance Table (`FRS.md`, `SDS.md`, `ux.md`). Append to `review-log.md`.                       |
 | `/pr`        | Check Preconditions Gate (`[Rule 16-17]`), run verification suite (`pnpm turbo run lint typecheck build test`), and format commit header (`feat(scope): description AB#ticket`). |
 
 #### Read-Only Sub-Agents (`.claude/agents/`)
@@ -694,35 +695,35 @@ Every HTTP route is namespace-versioned under `/api/v1` (`[FRS-8.6]`) and backed
 > **Architectural Note on `FRS.md` Ticket Mapping Table Row 8 (`AB-1016`):**
 > `AB-1016` E2E verification cites the Assignment's Definition of Done alongside FRS §1 through §8a in full. When running `/spec AB-1016` and implementing verification tests (`playwright` / E2E), developers and `test-writer.md` SHALL verify against the complete E2E user journey across all FRS sections alongside the Assignment DOD criteria — again reading requirement text and this route matrix directly, not the FRS Acceptance Criteria checklists (`[FRS-0.3.2]`).
 
-| Method     | Endpoint Path                             | Auth?       | Request DTO Schema (`packages/shared`)                                | Response DTO / Description & FRS Mapping                                                                                                                                                     |
-| ---------- | ------------------------------------------ | ----------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **POST**   | `/api/v1/auth/register`                   | No          | `registerSchema` (`email, password`)                                  | `201 Created` (`New user [BUG-6 Fix]`) OR `200 OK` (`Re-triggered unverified account [FRS-1.1.5]`) `{ success: true, isReTriggered: boolean, userId }`. Logs OTP to console (`[FRS-1.2.1]`). |
-| **POST**   | `/api/v1/auth/verify-otp`                 | No          | `verifyOtpSchema` (`userId` OR `email`, `code, type` — `[BUG-4 Fix]`) | `200 OK` `{ success: true, message }`. Enforces 3-attempt brute force & marks OTP `CONSUMED` (`[FRS-1.2.2, FRS-1.2.4a]`).                                                                    |
-| **POST**   | `/api/v1/auth/resend-otp`                 | No          | `resendOtpSchema` (`userId` OR `email`, `type` — `[BUG-4 Fix]`)       | `200 OK` (`60s` cooldown checked `[FRS-1.2.3]`).                                                                                                                                             |
-| **POST**   | `/api/v1/auth/login`                      | No          | `loginSchema` (`email, password`)                                     | `200 OK` `{ accessToken, user }` + `HttpOnly` refresh cookie. Rate-limited at 5 wrong-password attempts; unverified-but-correct-password does not count (`[FRS-1.3.1, FRS-1.3.4 v2.1, FRS-1.3.5]`). |
-| **POST**   | `/api/v1/auth/refresh`                    | No (Cookie) | None (Reads `refreshToken` cookie)                                    | `200 OK` `{ accessToken, user }` + rotated `HttpOnly` cookie (`[FRS-1.3.3, FRS-1.3.5]`).                                                                                                     |
-| **POST**   | `/api/v1/auth/logout`                     | Yes         | None                                                                  | `200 OK` (`Revokes refresh token & clears cookie [FRS-1.4.1]`).                                                                                                                              |
-| **POST**   | `/api/v1/auth/forgot-password`            | No          | `forgotPasswordSchema` (`email`)                                      | `200 OK` `{ success: true, userId, message }` (`[BUG-4 Fix]`). Generates reset OTP (`[FRS-1.5.1, FRS-1.5.2]`).                                                                               |
-| **POST**   | `/api/v1/auth/reset-password`             | No          | `resetPasswordSchema` (`email, code, newPassword`)                    | `200 OK`. Marks OTP `CONSUMED` & revokes all refresh sessions (`[FRS-1.5.4, FRS-1.5.6]`).                                                                                                    |
-| **POST**   | `/api/v1/notes`                           | Yes         | `createNoteSchema` (`title, body, tagIds`)                            | `201 Created` `{ NoteResponse }`. Creates initial `NoteVersion` snapshot (`[FRS-2.1.1, FRS-6.1]`).                                                                                           |
-| **GET**    | `/api/v1/notes`                           | Yes         | Query params (`sort, order, tags, tagMode, page, limit`)              | `200 OK` `{ PaginatedNotesResponse }`. Server-side sort and tag filter (`[FRS-2.3, FRS-8.4]`).                                                                                               |
-| **GET**    | `/api/v1/notes/trash`                     | Yes         | Query params (`page, limit`)                                          | `200 OK` `{ PaginatedNotesResponse }`. Returns Stage 1 trashed notes (`[FRS-2.2.2, FRS-2.3.6]`).                                                                                             |
-| **GET**    | `/api/v1/notes/:id`                       | Yes         | URL Param `id: UUID`                                                  | `200 OK` `{ NoteResponse }`. Returns `404` if note in Trash (`[FRS-2.1.2, FRS-2.2.3]`).                                                                                                      |
-| **PATCH**  | `/api/v1/notes/:id`                       | Yes         | `updateNoteSchema` (`title?, body?, tagIds?`, `isExplicitSave?`)      | `200 OK` `{ NoteResponse }`. Applies 5-min snapshot throttling & checks `deleted_at IS NULL` (`[FRS-6.1]`).                                                                                  |
-| **DELETE** | `/api/v1/notes/:id`                       | Yes         | URL Param `id: UUID`                                                  | `200 OK`. Sets `deletedAt = now()` (`Stage 1 Trash [FRS-2.2.1]`) and revokes share links (`revokedAt = now() [FRS-2.2.4]`).                                                                  |
-| **POST**   | `/api/v1/notes/:id/restore`               | Yes         | URL Param `id: UUID`                                                  | `200 OK` `{ NoteResponse }`. Restores (`deletedAt = null`), requires `deletedAt >= now() - 30d` (`404 if Stage 2 [FRS-2.2.5]`).                                                              |
-| **DELETE** | `/api/v1/notes/:id/permanent`             | Yes         | `permanentDeleteSchema` (`{ confirm: true }`)                         | `200 OK`. Deletes note forever (`[FRS-2.2.8]`), requires `deletedAt >= now() - 30d` (`404 if Stage 2 [FRS-2.2.5]`).                                                                          |
-| **GET**    | `/api/v1/notes/:id/versions`              | Yes         | URL Param `id: UUID`                                                  | `200 OK` `{ versions: NoteVersionSummaryResponse[] }` (`[FRS-6.2]`).                                                                                                                         |
-| **GET**    | `/api/v1/notes/:id/versions/:vId`         | Yes         | URL Params `id, vId: UUID`                                            | `200 OK` `{ NoteVersionResponse }` (`Full content [FRS-6.3]`).                                                                                                                               |
-| **POST**   | `/api/v1/notes/:id/versions/:vId/restore` | Yes         | URL Params `id, vId: UUID`                                            | `200 OK` `{ NoteResponse }`. Appends restored content as brand new top version (`[FRS-6.4]`).                                                                                                |
-| **POST**   | `/api/v1/notes/:id/share`                 | Yes         | `createShareLinkSchema` (`expiresInDays: 1..30`)                      | `201 Created` `{ ShareLinkResponse }` (`[FRS-5.1, FRS-5.2]`).                                                                                                                                |
-| **DELETE** | `/api/v1/notes/:id/share`                 | Yes         | URL Param `id: UUID`                                                  | `200 OK`. Sets `revokedAt = now()` (`[FRS-5.3]`).                                                                                                                                            |
-| **POST**   | `/api/v1/tags`                            | Yes         | `createTagSchema` (`name, color`)                                     | `201 Created` `{ TagResponse }`. Fly Tag dynamic creation (`[FRS-3.1, FRS-3.4]`).                                                                                                            |
-| **GET**    | `/api/v1/tags`                            | Yes         | None                                                                  | `200 OK` `{ tags: TagResponse[] }`. Includes live non-deleted `noteCount` (`[FRS-3.2]`).                                                                                                     |
-| **PATCH**  | `/api/v1/tags/:id`                        | Yes         | `updateTagSchema` (`name?, color?`)                                   | `200 OK` `{ TagResponse }` (`[FRS-3.1]`).                                                                                                                                                    |
-| **DELETE** | `/api/v1/tags/:id`                        | Yes         | URL Param `id: UUID`                                                  | `200 OK`. Removes tag without deleting associated notes (`[FRS-3.3]`).                                                                                                                       |
-| **GET**    | `/api/v1/search`                          | Yes         | Query params (`q, page, limit`)                                       | `200 OK` `{ PaginatedSearchResponse }`. Full-text search with sentinel highlights (`[FRS-4.1, FRS-4.2.1]`).                                                                                  |
-| **GET**    | `/api/v1/public/share/:token`             | **No**      | URL Param `token: string`                                             | `200 OK` `{ PublicNoteResponse }`. Executes atomic view increment on `share_links` & live `notes.deleted_at IS NULL` check, `404` on zero rows returned (`[FRS-5.4, FRS-2.2.4, FRS-8.1]`).  |
+| Method     | Endpoint Path                             | Auth?       | Request DTO Schema (`packages/shared`)                                                               | Response DTO / Description & FRS Mapping                                                                                                                                                            |
+| ---------- | ----------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **POST**   | `/api/v1/auth/register`                   | No          | `registerSchema` (`email, password`)                                                                 | `201 Created` (`New user [BUG-6 Fix]`) OR `200 OK` (`Re-triggered unverified account [FRS-1.1.5]`) `{ success: true, isReTriggered: boolean, userId }`. Logs OTP to console (`[FRS-1.2.1]`).        |
+| **POST**   | `/api/v1/auth/verify-otp`                 | No          | `verifyOtpSchema` (`userId` OR `email`, `code`, `type: 'EMAIL_VERIFICATION'` only as of `[AB-1003]`) | `200 OK` `{ success: true, message }`. Enforces 3-attempt brute force & marks OTP `CONSUMED` (`[FRS-1.2.2, FRS-1.2.4a]`).                                                                           |
+| **POST**   | `/api/v1/auth/resend-otp`                 | No          | `resendOtpSchema` (`userId` OR `email`, `type: 'EMAIL_VERIFICATION'` only as of `[AB-1003]`)         | `200 OK` (`60s` cooldown checked `[FRS-1.2.3]`).                                                                                                                                                    |
+| **POST**   | `/api/v1/auth/login`                      | No          | `loginSchema` (`email, password`)                                                                    | `200 OK` `{ accessToken, user }` + `HttpOnly` refresh cookie. Rate-limited at 5 wrong-password attempts; unverified-but-correct-password does not count (`[FRS-1.3.1, FRS-1.3.4 v2.1, FRS-1.3.5]`). |
+| **POST**   | `/api/v1/auth/refresh`                    | No (Cookie) | None (Reads `refreshToken` cookie)                                                                   | `200 OK` `{ accessToken, user }` + rotated `HttpOnly` cookie (`[FRS-1.3.3, FRS-1.3.5]`).                                                                                                            |
+| **POST**   | `/api/v1/auth/logout`                     | Yes         | None                                                                                                 | `200 OK` (`Revokes refresh token & clears cookie [FRS-1.4.1]`).                                                                                                                                     |
+| **POST**   | `/api/v1/auth/forgot-password`            | No          | `forgotPasswordSchema` (`email`)                                                                     | `200 OK` `{ success: true, data: { message } }` — identical for nonexistent/cooldown-blocked/fresh-OTP outcomes, no `userId` disclosed (`[FRS-1.5.1, FRS-1.5.3]`).                                  |
+| **POST**   | `/api/v1/auth/reset-password`             | No          | `resetPasswordSchema` (`email, code, newPassword`)                                                   | `200 OK`. Marks OTP `CONSUMED` & revokes all refresh sessions (`[FRS-1.5.4, FRS-1.5.6]`).                                                                                                           |
+| **POST**   | `/api/v1/notes`                           | Yes         | `createNoteSchema` (`title, body, tagIds`)                                                           | `201 Created` `{ NoteResponse }`. Creates initial `NoteVersion` snapshot (`[FRS-2.1.1, FRS-6.1]`).                                                                                                  |
+| **GET**    | `/api/v1/notes`                           | Yes         | Query params (`sort, order, tags, tagMode, page, limit`)                                             | `200 OK` `{ PaginatedNotesResponse }`. Server-side sort and tag filter (`[FRS-2.3, FRS-8.4]`).                                                                                                      |
+| **GET**    | `/api/v1/notes/trash`                     | Yes         | Query params (`page, limit`)                                                                         | `200 OK` `{ PaginatedNotesResponse }`. Returns Stage 1 trashed notes (`[FRS-2.2.2, FRS-2.3.6]`).                                                                                                    |
+| **GET**    | `/api/v1/notes/:id`                       | Yes         | URL Param `id: UUID`                                                                                 | `200 OK` `{ NoteResponse }`. Returns `404` if note in Trash (`[FRS-2.1.2, FRS-2.2.3]`).                                                                                                             |
+| **PATCH**  | `/api/v1/notes/:id`                       | Yes         | `updateNoteSchema` (`title?, body?, tagIds?`, `isExplicitSave?`)                                     | `200 OK` `{ NoteResponse }`. Applies 5-min snapshot throttling & checks `deleted_at IS NULL` (`[FRS-6.1]`).                                                                                         |
+| **DELETE** | `/api/v1/notes/:id`                       | Yes         | URL Param `id: UUID`                                                                                 | `200 OK`. Sets `deletedAt = now()` (`Stage 1 Trash [FRS-2.2.1]`) and revokes share links (`revokedAt = now() [FRS-2.2.4]`).                                                                         |
+| **POST**   | `/api/v1/notes/:id/restore`               | Yes         | URL Param `id: UUID`                                                                                 | `200 OK` `{ NoteResponse }`. Restores (`deletedAt = null`), requires `deletedAt >= now() - 30d` (`404 if Stage 2 [FRS-2.2.5]`).                                                                     |
+| **DELETE** | `/api/v1/notes/:id/permanent`             | Yes         | `permanentDeleteSchema` (`{ confirm: true }`)                                                        | `200 OK`. Deletes note forever (`[FRS-2.2.8]`), requires `deletedAt >= now() - 30d` (`404 if Stage 2 [FRS-2.2.5]`).                                                                                 |
+| **GET**    | `/api/v1/notes/:id/versions`              | Yes         | URL Param `id: UUID`                                                                                 | `200 OK` `{ versions: NoteVersionSummaryResponse[] }` (`[FRS-6.2]`).                                                                                                                                |
+| **GET**    | `/api/v1/notes/:id/versions/:vId`         | Yes         | URL Params `id, vId: UUID`                                                                           | `200 OK` `{ NoteVersionResponse }` (`Full content [FRS-6.3]`).                                                                                                                                      |
+| **POST**   | `/api/v1/notes/:id/versions/:vId/restore` | Yes         | URL Params `id, vId: UUID`                                                                           | `200 OK` `{ NoteResponse }`. Appends restored content as brand new top version (`[FRS-6.4]`).                                                                                                       |
+| **POST**   | `/api/v1/notes/:id/share`                 | Yes         | `createShareLinkSchema` (`expiresInDays: 1..30`)                                                     | `201 Created` `{ ShareLinkResponse }` (`[FRS-5.1, FRS-5.2]`).                                                                                                                                       |
+| **DELETE** | `/api/v1/notes/:id/share`                 | Yes         | URL Param `id: UUID`                                                                                 | `200 OK`. Sets `revokedAt = now()` (`[FRS-5.3]`).                                                                                                                                                   |
+| **POST**   | `/api/v1/tags`                            | Yes         | `createTagSchema` (`name, color`)                                                                    | `201 Created` `{ TagResponse }`. Fly Tag dynamic creation (`[FRS-3.1, FRS-3.4]`).                                                                                                                   |
+| **GET**    | `/api/v1/tags`                            | Yes         | None                                                                                                 | `200 OK` `{ tags: TagResponse[] }`. Includes live non-deleted `noteCount` (`[FRS-3.2]`).                                                                                                            |
+| **PATCH**  | `/api/v1/tags/:id`                        | Yes         | `updateTagSchema` (`name?, color?`)                                                                  | `200 OK` `{ TagResponse }` (`[FRS-3.1]`).                                                                                                                                                           |
+| **DELETE** | `/api/v1/tags/:id`                        | Yes         | URL Param `id: UUID`                                                                                 | `200 OK`. Removes tag without deleting associated notes (`[FRS-3.3]`).                                                                                                                              |
+| **GET**    | `/api/v1/search`                          | Yes         | Query params (`q, page, limit`)                                                                      | `200 OK` `{ PaginatedSearchResponse }`. Full-text search with sentinel highlights (`[FRS-4.1, FRS-4.2.1]`).                                                                                         |
+| **GET**    | `/api/v1/public/share/:token`             | **No**      | URL Param `token: string`                                                                            | `200 OK` `{ PublicNoteResponse }`. Executes atomic view increment on `share_links` & live `notes.deleted_at IS NULL` check, `404` on zero rows returned (`[FRS-5.4, FRS-2.2.4, FRS-8.1]`).          |
 
 ---
 
@@ -730,34 +731,34 @@ Every HTTP route is namespace-versioned under `/api/v1` (`[FRS-8.6]`) and backed
 
 Every requirement in `FRS.md` v2.1 maps directly to an architectural and data contract component in this specification:
 
-| FRS Requirement ID     | Requirement Description Summary                                             | Exact Technical Mapping in `SDS.md`                                                                               |
-| ----------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `[FRS-0.1]`            | `pnpm workspaces` + `Turborepo` monorepo (`api`, `web`, `shared`, `config`) | Section 1.1: Complete monorepo tree, `turbo.json` (`^build`), and runtime boundaries.                             |
-| `[FRS-0.2]`            | AI Governance Brain (`AGENTS.md`, `CLAUDE.md`)                              | Section 6.1: Exact lines and domain specific instructions across root and package `CLAUDE.md`.                    |
-| `[FRS-0.3]`            | OpenSpec Slash commands & read-only sub-agents                              | Section 6.2: Complete slash command lifecycle table (`/start - /pr`) + `reviewer.md` and `test-writer.md`.        |
-| `[FRS-0.3.1]`          | Live documentation verification rule against hallucination                  | Section 6.3: Mandatory MCP documentation query rule before third-party API code generation.                       |
-| `[FRS-0.3.2]`          | `test-writer.md` must not source tests from Acceptance Criteria wording      | Section 6.2: Binding input-source constraint + worked example on `FRS-1.3.4`.                                     |
-| `[FRS-0.3.3]`          | Isolated test database (`notes_app_test`) for `supertest` and `playwright`  | Section 1.5 (`Test Database Isolation Contract`) & Section 6.2 (`test-writer.md` / `reviewer.md` rules).         |
-| `[FRS-0.4]`            | PostgreSQL 16 + Docker + Prisma ORM baseline                                | Section 1.5 (`docker-compose.yml`) & Section 2.1 (`schema.prisma`, native `citext` extension).                   |
-| `[FRS-0.5, Rule 14]`   | Strict git hooks and canonical commit message format                        | Section 1.3: `Husky` + `lint-staged` + `commitlint.config.js` enforcing `feat(scope): description AB#ticket`.     |
-| `[FRS-0.6, Rule 12]`   | Local Verification & Quality Gates (`lint, typecheck, tsup build, test`)            | Section 1.4: Quality gates (`pnpm turbo run ...` + `tsup` build + `tsc` typecheck + `≥80% coverage`).             |
-| `[FRS-1.1.1 - 1.1.4]`  | Registration, case-insensitive email, password complexity                   | Section 2.1 (native `Citext`), Section 3.2, and `createNoteSchema` validation definitions.                        |
-| `[FRS-1.1.5]`          | Duplicate registration with unverified account re-triggers OTP              | Section 3.2: Exact `AuthService.register` implementation returning `200 OK` + 60s cooldown check.                 |
-| `[FRS-1.2.1 - 1.2.4]`  | 6-digit OTP verification, 10 min expiry, 3 max attempts                     | Section 1.2 (`APP_LIMITS`), Section 2.1 (`OtpCode` model), Section 3.2 (`verifyOtp` logic).                       |
-| `[FRS-1.2.4a]`         | Distinct OTP terminal states (`CONSUMED` vs `INVALIDATED`)                  | Section 2.1 (`OtpStatus` enum) & Section 3.2 diagram and service state updates.                                   |
-| `[FRS-1.3.1 - 1.3.5]`  | Login tokens, rate-limiting (5 wrong-password in 15m, unverified excluded), `HttpOnly` + JS memory | Section 3.1 (`authStore` vs cookie strategy), Section 3.2 (`checkLoginRateLimit` middleware, v1.4 split logic).   |
-| `[FRS-1.4.1]`          | Logout invalidates exact refresh token                                      | Section 7: `POST /api/v1/auth/logout` route matrix and database token revocation (`revokedAt = now()`).           |
-| `[FRS-1.5.1 - 1.5.6]`  | Password reset OTP, single-use, revokes all user sessions                   | Section 2.1 (`OtpType.PASSWORD_RESET`), Section 3.2 (`verifyOtp`), Section 7 route contracts.                     |
-| `[FRS-2.1.1 - 2.1.6]`  | Note CRUD, owner scoping, title/body length checks (`200 / 100k`)           | Section 2.1 (`@db.VarChar(200)`, `@db.Text`), Section 2.2 (`CHECK` constraints), Section 4.1 flow.                |
-| `[FRS-2.2.1 - 2.2.8]`  | Two-stage Trash bin (`30d Stage 1 + 30d Stage 2`), instant delete           | Section 2.1 (`deletedAt`), Section 5.3 (`cleanup.job.ts`), Section 7 `trash/restore/permanent` endpoints.         |
-| `[FRS-2.2.4, FRS-8.1]` | Live share-link access check verifying `deletedAt == null`                  | Section 2.2: Corrected atomic `$queryRaw` query updating `share_links.view_count`, joined against `notes.deleted_at IS NULL`. |
-| `[FRS-2.3.1 - 2.3.6]`  | Pagination, server tiebreakers, `tagMode=ALL` default, Trash 30d window     | Section 5.1 (`filterNotesSchema`, `listActiveNotes`), Section 5.2 (`listTrashNotes` Stage-1 window).              |
-| `[FRS-3.1 - 3.4]`      | Tags CRUD, Fly Tag creation, unique names, live note counts                 | Section 2.1 (`Tag.name` native `Citext`), Section 4.2 (`TagCombobox`), Section 7 route matrix (`GET /api/v1/tags`). |
-| `[FRS-4.1 - 4.5]`      | Full-text search, `tsvector` GIN index, custom sentinel highlights          | Section 2.2 (`search_vector tsvector`), Section 4.3 (`ts_headline` sentinels & `SnippetHighlight.tsx`).           |
-| `[FRS-5.1 - 5.6]`      | Public share links, 1-30d expiry, atomic view count, `404` errors           | Section 2.1 (`ShareLink.viewCount`), Section 2.2 (corrected `$queryRaw` atomic increment on `share_links`), Section 7. |
-| `[FRS-6.1 - 6.5]`      | Version history snapshots, 5-minute autosave throttling, 90d purge          | Section 1.2 (`APP_LIMITS`), Section 4.4 (`updateNote` throttle logic), Section 5.3 (`cleanup.job.ts`).            |
-| `[FRS-7.1 - 7.5]`      | Frontend TipTap background autosave, responsive UI, confirmations           | Section 4.5 (`Frontend UX Parity`), Section 4.4 (`updateNote` hook), Section 1.2 (`UI_COPY` prompts).             |
-| `[FRS-8.1 - 8.7]`      | Cross-cutting rules: UTC timestamps, server-side search/filter, OpenAPI     | Section 1.1 (`app.ts` Swagger), Section 2.1 (`@db.Timestamptz(6)`), Section 5.1 TanStack Query refetching.        |
-| `[FRS-8a.1 - 8a.5]`    | Unified automated nightly scheduled cleanup job (`0 3 * * *`), 5 categories | Section 5.3: Exact 5-pass `cleanup.job.ts` cron implementation purging Stage 2, versions, OTPs, sessions, logins. |
+| FRS Requirement ID     | Requirement Description Summary                                                                    | Exact Technical Mapping in `SDS.md`                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `[FRS-0.1]`            | `pnpm workspaces` + `Turborepo` monorepo (`api`, `web`, `shared`, `config`)                        | Section 1.1: Complete monorepo tree, `turbo.json` (`^build`), and runtime boundaries.                                           |
+| `[FRS-0.2]`            | AI Governance Brain (`AGENTS.md`, `CLAUDE.md`)                                                     | Section 6.1: Exact lines and domain specific instructions across root and package `CLAUDE.md`.                                  |
+| `[FRS-0.3]`            | OpenSpec Slash commands & read-only sub-agents                                                     | Section 6.2: Complete slash command lifecycle table (`/start - /pr`) + `reviewer.md` and `test-writer.md`.                      |
+| `[FRS-0.3.1]`          | Live documentation verification rule against hallucination                                         | Section 6.3: Mandatory MCP documentation query rule before third-party API code generation.                                     |
+| `[FRS-0.3.2]`          | `test-writer.md` must not source tests from Acceptance Criteria wording                            | Section 6.2: Binding input-source constraint + worked example on `FRS-1.3.4`.                                                   |
+| `[FRS-0.3.3]`          | Isolated test database (`notes_app_test`) for `supertest` and `playwright`                         | Section 1.5 (`Test Database Isolation Contract`) & Section 6.2 (`test-writer.md` / `reviewer.md` rules).                        |
+| `[FRS-0.4]`            | PostgreSQL 16 + Docker + Prisma ORM baseline                                                       | Section 1.5 (`docker-compose.yml`) & Section 2.1 (`schema.prisma`, native `citext` extension).                                  |
+| `[FRS-0.5, Rule 14]`   | Strict git hooks and canonical commit message format                                               | Section 1.3: `Husky` + `lint-staged` + `commitlint.config.js` enforcing `feat(scope): description AB#ticket`.                   |
+| `[FRS-0.6, Rule 12]`   | Local Verification & Quality Gates (`lint, typecheck, tsup build, test`)                           | Section 1.4: Quality gates (`pnpm turbo run ...` + `tsup` build + `tsc` typecheck + `≥80% coverage`).                           |
+| `[FRS-1.1.1 - 1.1.4]`  | Registration, case-insensitive email, password complexity                                          | Section 2.1 (native `Citext`), Section 3.2, and `createNoteSchema` validation definitions.                                      |
+| `[FRS-1.1.5]`          | Duplicate registration with unverified account re-triggers OTP                                     | Section 3.2: Exact `AuthService.register` implementation returning `200 OK` + 60s cooldown check.                               |
+| `[FRS-1.2.1 - 1.2.4]`  | 6-digit OTP verification, 10 min expiry, 3 max attempts                                            | Section 1.2 (`APP_LIMITS`), Section 2.1 (`OtpCode` model), Section 3.2 (`verifyOtp` logic).                                     |
+| `[FRS-1.2.4a]`         | Distinct OTP terminal states (`CONSUMED` vs `INVALIDATED`)                                         | Section 2.1 (`OtpStatus` enum) & Section 3.2 diagram and service state updates.                                                 |
+| `[FRS-1.3.1 - 1.3.5]`  | Login tokens, rate-limiting (5 wrong-password in 15m, unverified excluded), `HttpOnly` + JS memory | Section 3.1 (`authStore` vs cookie strategy), Section 3.2 (`checkLoginRateLimit` middleware, v1.4 split logic).                 |
+| `[FRS-1.4.1]`          | Logout invalidates exact refresh token                                                             | Section 7: `POST /api/v1/auth/logout` route matrix and database token revocation (`revokedAt = now()`).                         |
+| `[FRS-1.5.1 - 1.5.6]`  | Password reset OTP, single-use, revokes all user sessions                                          | Section 2.1 (`OtpType.PASSWORD_RESET`), Section 3.2 (`forgotPassword`/`resetPassword`, `[AB-1003]`), Section 7 route contracts. |
+| `[FRS-2.1.1 - 2.1.6]`  | Note CRUD, owner scoping, title/body length checks (`200 / 100k`)                                  | Section 2.1 (`@db.VarChar(200)`, `@db.Text`), Section 2.2 (`CHECK` constraints), Section 4.1 flow.                              |
+| `[FRS-2.2.1 - 2.2.8]`  | Two-stage Trash bin (`30d Stage 1 + 30d Stage 2`), instant delete                                  | Section 2.1 (`deletedAt`), Section 5.3 (`cleanup.job.ts`), Section 7 `trash/restore/permanent` endpoints.                       |
+| `[FRS-2.2.4, FRS-8.1]` | Live share-link access check verifying `deletedAt == null`                                         | Section 2.2: Corrected atomic `$queryRaw` query updating `share_links.view_count`, joined against `notes.deleted_at IS NULL`.   |
+| `[FRS-2.3.1 - 2.3.6]`  | Pagination, server tiebreakers, `tagMode=ALL` default, Trash 30d window                            | Section 5.1 (`filterNotesSchema`, `listActiveNotes`), Section 5.2 (`listTrashNotes` Stage-1 window).                            |
+| `[FRS-3.1 - 3.4]`      | Tags CRUD, Fly Tag creation, unique names, live note counts                                        | Section 2.1 (`Tag.name` native `Citext`), Section 4.2 (`TagCombobox`), Section 7 route matrix (`GET /api/v1/tags`).             |
+| `[FRS-4.1 - 4.5]`      | Full-text search, `tsvector` GIN index, custom sentinel highlights                                 | Section 2.2 (`search_vector tsvector`), Section 4.3 (`ts_headline` sentinels & `SnippetHighlight.tsx`).                         |
+| `[FRS-5.1 - 5.6]`      | Public share links, 1-30d expiry, atomic view count, `404` errors                                  | Section 2.1 (`ShareLink.viewCount`), Section 2.2 (corrected `$queryRaw` atomic increment on `share_links`), Section 7.          |
+| `[FRS-6.1 - 6.5]`      | Version history snapshots, 5-minute autosave throttling, 90d purge                                 | Section 1.2 (`APP_LIMITS`), Section 4.4 (`updateNote` throttle logic), Section 5.3 (`cleanup.job.ts`).                          |
+| `[FRS-7.1 - 7.5]`      | Frontend TipTap background autosave, responsive UI, confirmations                                  | Section 4.5 (`Frontend UX Parity`), Section 4.4 (`updateNote` hook), Section 1.2 (`UI_COPY` prompts).                           |
+| `[FRS-8.1 - 8.7]`      | Cross-cutting rules: UTC timestamps, server-side search/filter, OpenAPI                            | Section 1.1 (`app.ts` Swagger), Section 2.1 (`@db.Timestamptz(6)`), Section 5.1 TanStack Query refetching.                      |
+| `[FRS-8a.1 - 8a.5]`    | Unified automated nightly scheduled cleanup job (`0 3 * * *`), 5 categories                        | Section 5.3: Exact 5-pass `cleanup.job.ts` cron implementation purging Stage 2, versions, OTPs, sessions, logins.               |
 
 ---
