@@ -174,3 +174,13 @@ export function revokeActiveSessionsForDevice(
     data: { revokedAt: new Date() },
   });
 }
+
+export function revokeAllRefreshSessionsForUser(
+  userId: string,
+  db: Db = prisma,
+): Promise<Prisma.BatchPayload> {
+  return db.refreshSession.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}

@@ -125,4 +125,25 @@ describe("[FRS-1.2.3] POST /auth/resend-otp", () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe(API_ERROR_CODES.OTP_EXPIRED);
   });
+
+  it("[FRS-1.5.1 scope-tightening] SHALL reject a `type: 'PASSWORD_RESET'` request with 400 VALIDATION_ERROR before the service layer runs, leaving the OtpCode row's status/attempts completely untouched", async () => {
+    const email = "resend-password-reset-type-rejected@example.com";
+    const { userId } = await registerAndCaptureOtp(email);
+
+    const res = await request(app)
+      .post(ROUTES.RESEND_OTP)
+      .send({ email, type: "PASSWORD_RESET" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe(API_ERROR_CODES.VALIDATION_ERROR);
+
+    const otp = await prisma.otpCode.findFirst({
+      where: { userId, type: "EMAIL_VERIFICATION" },
+    });
+    expect(otp?.status).toBe("PENDING");
+    expect(otp?.attempts).toBe(0);
+
+    const otpCount = await prisma.otpCode.count({ where: { userId } });
+    expect(otpCount).toBe(1);
+  });
 });

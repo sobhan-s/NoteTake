@@ -46,46 +46,21 @@ TBD - created by archiving change AB-1002-auth-user-verification. Update Purpose
 
 ### Requirement: Email Verification
 
-`POST /api/v1/auth/verify-otp` SHALL accept `{ userId | email, code, type }` validated by `verifyOtpSchema` (refined: at least one of `userId`/`email` required), resolving the latest OTP row for the user + `type` ordered by `createdAt DESC` (`FRS-1.2.1–1.2.5`, `FRS-1.2.4a`).
+`POST /api/v1/auth/verify-otp` SHALL accept only `type: 'EMAIL_VERIFICATION'`, narrowed from the prior `type: 'EMAIL_VERIFICATION' | 'PASSWORD_RESET'` — `PASSWORD_RESET` OTP verification now lives exclusively in `reset-password` above.
 
-#### Scenario: Missing, expired, or already-consumed OTP is rejected generically
+#### Scenario: A PASSWORD_RESET type value is rejected as a validation error, not processed
 
-- **WHEN** no OTP row exists for the resolved user + type, or the latest row has `status !== 'PENDING'`, or `expiresAt < now()`
-- **THEN** the service returns `400 Bad Request` `{ error: { code: 'OTP_EXPIRED' } }` with a "request a new one" message, never distinguishing expired from never-existed from already-`CONSUMED`
-
-#### Scenario: OTP already at or past the attempt cap is rejected distinctly from expiry
-
-- **WHEN** the latest OTP row has `status === 'INVALIDATED'` or `attempts >= APP_LIMITS.OTP_MAX_ATTEMPTS`
-- **THEN** the service returns `429 Too Many Requests` `{ error: { code: 'OTP_MAX_ATTEMPTS_EXCEEDED' } }`
-
-#### Scenario: Code mismatch increments attempts atomically under concurrency
-
-- **WHEN** the submitted code does not match the row's `codeHash`
-- **THEN** the service increments `attempts` inside a transaction that row-locks the target `OtpCode` (`SELECT ... FOR UPDATE` or equivalent Prisma interactive transaction) to prevent a concurrent-request bypass of the 3-attempt cap; if the incremented `attempts >= APP_LIMITS.OTP_MAX_ATTEMPTS` the same transaction additionally sets `status='INVALIDATED'` and the service returns `429`, otherwise it returns `400 Bad Request` with an attempts-remaining count — and in both cases the attempt-count write SHALL persist (commit) regardless of whether the overall request is reported as a failure
-
-#### Scenario: Correct code consumes the OTP and verifies the account
-
-- **WHEN** the submitted code matches the row's `codeHash` while `status === 'PENDING'` and not expired
-- **THEN** the service sets `status='CONSUMED'` and `User.isVerified=true` in one transaction and returns `200 OK` `{ success: true, data: { message } }`; that OTP SHALL NOT be resubmittable even if `expiresAt` has not yet passed (`FRS-1.2.2`)
-
-#### Scenario: CONSUMED and INVALIDATED are never conflated
-
-- **WHEN** any code path queries or evaluates an OTP's terminal state
-- **THEN** `CONSUMED` (entered correctly, single-use) and `INVALIDATED` (hit the attempt cap) remain strictly distinct, independently queryable `OtpStatus` values — no code path treats them interchangeably (`FRS-1.2.4a`)
+- **WHEN** a request to `/api/v1/auth/verify-otp` submits `type: 'PASSWORD_RESET'`
+- **THEN** `verifyOtpSchema.parse` throws before the service layer runs, and the controller surfaces `400 Bad Request { error: { code: 'VALIDATION_ERROR' } }` — the endpoint never reaches, locks, or mutates a `PASSWORD_RESET` `OtpCode` row
 
 ### Requirement: Resend OTP
 
-`POST /api/v1/auth/resend-otp` SHALL accept `{ userId | email, type }` validated by `resendOtpSchema`, enforcing the same `APP_LIMITS.OTP_RESEND_COOLDOWN_SECONDS` cooldown as the registration re-trigger flow (`FRS-1.2.3`).
+`POST /api/v1/auth/resend-otp` SHALL accept only `type: 'EMAIL_VERIFICATION'`, narrowed from the prior `type: 'EMAIL_VERIFICATION' | 'PASSWORD_RESET'` — requesting a new `PASSWORD_RESET` code now happens exclusively via repeated calls to `forgot-password` above (which, unlike this endpoint, never discloses cooldown state).
 
-#### Scenario: Resend outside the cooldown invalidates the old OTP and issues a new one
+#### Scenario: A PASSWORD_RESET type value is rejected as a validation error, not processed
 
-- **WHEN** the most recent OTP for the user + type is absent or older than `APP_LIMITS.OTP_RESEND_COOLDOWN_SECONDS`
-- **THEN** the service invalidates any still-`PENDING` prior OTP, generates and console-logs a new one, and returns `200 OK`
-
-#### Scenario: Resend inside the cooldown is rejected
-
-- **WHEN** the most recent OTP for the user + type is younger than `APP_LIMITS.OTP_RESEND_COOLDOWN_SECONDS`
-- **THEN** the service returns `429 Too Many Requests` `{ error: { code: 'RESEND_COOLDOWN_ACTIVE' } }` without invalidating or creating any OTP row
+- **WHEN** a request to `/api/v1/auth/resend-otp` submits `type: 'PASSWORD_RESET'`
+- **THEN** `resendOtpSchema.parse` throws before the service layer runs, and the controller surfaces `400 Bad Request { error: { code: 'VALIDATION_ERROR' } }`
 
 ### Requirement: Login
 
@@ -166,3 +141,76 @@ TBD - created by archiving change AB-1002-auth-user-verification. Update Purpose
 
 - **WHEN** any of the seven auth routes is inspected in `apps/api/src/controllers/auth.controller.ts`
 - **THEN** each handler only calls `schema.parse(req.body)` (schema imported from `@shared/core/schemas`, never defined inline) and a matching `auth.service` function, with zero raw SQL and zero business logic present
+
+### Requirement: Shared Password Reset Contracts
+
+`packages/shared` SHALL gain `forgotPasswordSchema` and `resetPasswordSchema` in `src/schemas/auth.schema.ts`, with corresponding `z.infer` types `ForgotPasswordInput`/`ResetPasswordInput` in `src/types/auth.type.ts`. The password-strength rule currently inlined in `registerSchema.password` SHALL be extracted into a standalone exported `passwordSchema` and reused by both `registerSchema` and `resetPasswordSchema.newPassword` — no duplicated regex (`Rule 11`, `FRS-1.1.3`). `API_PATHS.AUTH` SHALL gain `FORGOT_PASSWORD: '/forgot-password'` and `RESET_PASSWORD: '/reset-password'`. No new `APP_LIMITS` or `API_ERROR_CODES` entries are required — this delta reuses `OTP_LENGTH`, `OTP_EXPIRY_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS`, `REFRESH_TOKEN_EXPIRY_DAYS`, `OTP_EXPIRED`, `OTP_INVALID`, `OTP_MAX_ATTEMPTS_EXCEEDED`, and `VALIDATION_ERROR` verbatim.
+
+#### Scenario: forgotPasswordSchema accepts only a normalized email
+
+- **WHEN** `apps/api` or `apps/web` needs to validate a forgot-password request
+- **THEN** they import `forgotPasswordSchema` from `@shared/core/schemas`, which accepts `{ email }` with the same `.trim().toLowerCase().email(...)` normalization already used by `loginSchema`/`registerSchema` — no duplicate email validation logic
+
+#### Scenario: resetPasswordSchema reuses the shared password rule
+
+- **WHEN** `apps/api` or `apps/web` needs to validate a reset-password request
+- **THEN** they import `resetPasswordSchema` from `@shared/core/schemas`, which accepts `{ email, code, newPassword }` where `code` is exactly `APP_LIMITS.OTP_LENGTH` characters and `newPassword` is validated by the same exported `passwordSchema` instance `registerSchema` uses — never a re-declared regex
+
+### Requirement: Forgot Password (Request Reset)
+
+`POST /api/v1/auth/forgot-password` SHALL accept `{ email }` validated by `forgotPasswordSchema`, and SHALL return an identical `200 OK` response for every outcome — nonexistent account, existing account (verified or not), and cooldown-blocked account are all indistinguishable to the caller (`FRS-1.5.1`, `FRS-1.5.3`).
+
+#### Scenario: Nonexistent email is a silent no-op that still returns 200
+
+- **WHEN** no `User` row exists for the submitted email
+- **THEN** the service performs no database write, generates no OTP, logs nothing to the console, and returns `200 OK` `{ success: true, data: { message } }` with the same generic message used for every other outcome of this endpoint
+
+#### Scenario: Existing account outside the cooldown gets a fresh OTP
+
+- **WHEN** a `User` row exists (regardless of `isVerified`) and the most recent `PASSWORD_RESET` OTP's `createdAt` is absent or at least `APP_LIMITS.OTP_RESEND_COOLDOWN_SECONDS` old
+- **THEN** the service invalidates any still-`PENDING` prior `PASSWORD_RESET` OTP for that user (`status=INVALIDATED`), generates a new 6-digit OTP (`type=PASSWORD_RESET`, `expiresAt = now() + APP_LIMITS.OTP_EXPIRY_MINUTES`), console-logs it (`FRS-8.3`), and returns the same generic `200 OK` message as every other outcome
+
+#### Scenario: Existing account inside the cooldown is silently throttled, not disclosed
+
+- **WHEN** a `User` row exists and the most recent `PASSWORD_RESET` OTP's `createdAt` is less than `APP_LIMITS.OTP_RESEND_COOLDOWN_SECONDS` old
+- **THEN** the service neither invalidates the existing OTP nor creates a new one nor logs anything, and still returns the identical generic `200 OK` — never a `429`, so a caller cannot distinguish "just requested" from "no account" from "brand new request"
+
+### Requirement: Reset Password (Verify + Set New Password)
+
+`POST /api/v1/auth/reset-password` SHALL accept `{ email, code, newPassword }` validated by `resetPasswordSchema`, and SHALL atomically verify the `PASSWORD_RESET` OTP and update the password in one transaction — mirroring the concurrency-safe row-lock pattern already used by `verify-otp` (`FRS-1.5.2`, `FRS-1.5.4`, `FRS-1.5.5`, `FRS-1.5.6`).
+
+#### Scenario: Nonexistent email is rejected with the same generic code as a bad OTP
+
+- **WHEN** no `User` row exists for the submitted email
+- **THEN** the service returns `400 Bad Request` `{ error: { code: 'OTP_EXPIRED' } }` — identical to the "missing/expired/consumed" case below, disclosing nothing about account existence
+
+#### Scenario: Missing, expired, or already-consumed OTP is rejected generically
+
+- **WHEN** the resolved user has no `PASSWORD_RESET` OTP row, or the latest row has `status !== 'PENDING'`, or `expiresAt < now()`
+- **THEN** the service returns `400 Bad Request` `{ error: { code: 'OTP_EXPIRED' } }` with a "request a new one" message, never distinguishing expired from never-existed from already-`CONSUMED`
+
+#### Scenario: OTP already at or past the attempt cap is rejected distinctly from expiry
+
+- **WHEN** the latest `PASSWORD_RESET` OTP row has `status === 'INVALIDATED'` or `attempts >= APP_LIMITS.OTP_MAX_ATTEMPTS`
+- **THEN** the service returns `429 Too Many Requests` `{ error: { code: 'OTP_MAX_ATTEMPTS_EXCEEDED' } }` without touching `passwordHash` or any `RefreshSession` row
+
+#### Scenario: Code mismatch increments attempts atomically under concurrency
+
+- **WHEN** the submitted `code` does not match the row's `codeHash`
+- **THEN** the service row-locks the target `OtpCode` (`SELECT ... FOR UPDATE`, same mechanism as `verify-otp`) and increments `attempts` inside that transaction; if the incremented value reaches `APP_LIMITS.OTP_MAX_ATTEMPTS` the same transaction also sets `status='INVALIDATED'` and the service returns `429 OTP_MAX_ATTEMPTS_EXCEEDED`, otherwise it returns `400 Bad Request { code: 'OTP_INVALID' }` with an attempts-remaining count — in both cases the password hash is left untouched and no `RefreshSession` is revoked (`FRS-1.5.5`)
+
+#### Scenario: Correct code atomically resets the password, consumes the OTP, and revokes every session
+
+- **WHEN** the submitted `code` matches the row's `codeHash` while `status === 'PENDING'` and not expired
+- **THEN** in one transaction the service hashes `newPassword` with bcrypt (Tier 2 `BCRYPT_ROUNDS`), updates `User.passwordHash`, sets the OTP `status='CONSUMED'`, and revokes every `RefreshSession` for that user where `revokedAt IS NULL` (not scoped to one device, unlike login's same-device revocation) — then returns `200 OK` `{ success: true, data: { message } }`. The OTP SHALL NOT be resubmittable even if `expiresAt` has not yet passed (`FRS-1.5.4`), and every other logged-in device for that user is force-logged-out on its next request (`FRS-1.5.6`)
+
+### Requirement: Revoke All Sessions Repository Primitive
+
+`apps/api/src/repositories/auth.repository.ts` SHALL gain `revokeAllRefreshSessionsForUser(userId, db?)`, distinct from the existing device-scoped `revokeActiveSessionsForDevice` used at login (`SDS §2.1` `RefreshSession`).
+
+#### Scenario: Revocation targets every session for the user, not one device
+
+- **WHEN** `resetPassword`'s transaction calls `revokeAllRefreshSessionsForUser(userId, tx)`
+- **THEN** it runs `refreshSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now() } })` with no `userAgent` filter — every device session for that user ends up revoked, regardless of which device originated the reset request
+
+---

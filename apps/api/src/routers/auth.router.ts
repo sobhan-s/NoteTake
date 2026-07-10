@@ -9,6 +9,8 @@ const router: RouterType = Router();
 router.post(API_PATHS.AUTH.REGISTER, authController.register);
 router.post(API_PATHS.AUTH.VERIFY_OTP, authController.verifyOtp);
 router.post(API_PATHS.AUTH.RESEND_OTP, authController.resendOtp);
+router.post(API_PATHS.AUTH.FORGOT_PASSWORD, authController.forgotPassword);
+router.post(API_PATHS.AUTH.RESET_PASSWORD, authController.resetPassword);
 router.post(API_PATHS.AUTH.LOGIN, checkLoginRateLimit, authController.login);
 router.post(API_PATHS.AUTH.REFRESH, authController.refresh);
 router.post(API_PATHS.AUTH.LOGOUT, requireAuth, authController.logout);

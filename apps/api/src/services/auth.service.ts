@@ -3,11 +3,13 @@ import type { User } from "@prisma/client";
 import { APP_LIMITS, API_ERROR_CODES } from "@shared/core/constants";
 import type {
   AuthUserDto,
+  ForgotPasswordInput,
   LoginInput,
   MeResponseDto,
   RegisterInput,
   RegisterResponseDto,
   ResendOtpInput,
+  ResetPasswordInput,
   VerifyOtpInput,
 } from "@shared/core/types";
 import { prisma } from "../lib/prisma-client.js";
@@ -208,9 +210,7 @@ export async function verifyOtp(
     }
 
     await authRepository.markOtpConsumed(fresh.id, tx);
-    if (input.type === "EMAIL_VERIFICATION") {
-      await authRepository.markUserVerified(user.id, tx);
-    }
+    await authRepository.markUserVerified(user.id, tx);
     return { outcome: "success" as const };
   });
 
@@ -279,6 +279,147 @@ export async function resendOtp(
   logOtpToConsole(user.email, code, input.type);
 
   return { message: "A new code has been sent." };
+}
+
+export async function forgotPassword(
+  input: ForgotPasswordInput,
+): Promise<{ message: string }> {
+  const message =
+    "If an account exists for this email, a reset code has been sent.";
+
+  const user = await authRepository.findUserByEmail(input.email);
+  if (!user) return { message };
+
+  const latest = await authRepository.findLatestOtp(user.id, "PASSWORD_RESET");
+  if (latest && otpCooldownRemaining(latest.createdAt)) return { message };
+
+  const code = generateOtpCode();
+  const codeHash = await hashOtpCode(code);
+
+  await prisma.$transaction(async (tx) => {
+    await authRepository.invalidatePendingOtp(user.id, "PASSWORD_RESET", tx);
+    await authRepository.createOtp(
+      {
+        userId: user.id,
+        type: "PASSWORD_RESET",
+        codeHash,
+        expiresAt: new Date(
+          Date.now() + APP_LIMITS.OTP_EXPIRY_MINUTES * 60_000,
+        ),
+      },
+      tx,
+    );
+  });
+  logOtpToConsole(user.email, code, "PASSWORD_RESET");
+
+  return { message };
+}
+
+export async function resetPassword(
+  input: ResetPasswordInput,
+): Promise<{ message: string }> {
+  const user = await authRepository.findUserByEmail(input.email);
+  if (!user) {
+    throw new AppError(
+      400,
+      API_ERROR_CODES.OTP_EXPIRED,
+      "OTP expired or invalid. Please request a new one.",
+    );
+  }
+
+  const latest = await authRepository.findLatestOtp(user.id, "PASSWORD_RESET");
+  if (!latest) {
+    throw new AppError(
+      400,
+      API_ERROR_CODES.OTP_EXPIRED,
+      "OTP expired or invalid. Please request a new one.",
+    );
+  }
+  if (
+    latest.status === "INVALIDATED" ||
+    latest.attempts >= APP_LIMITS.OTP_MAX_ATTEMPTS
+  ) {
+    throw new AppError(
+      429,
+      API_ERROR_CODES.OTP_MAX_ATTEMPTS_EXCEEDED,
+      "Maximum verification attempts exceeded. Please request a new code.",
+    );
+  }
+  if (latest.status !== "PENDING" || latest.expiresAt < new Date()) {
+    throw new AppError(
+      400,
+      API_ERROR_CODES.OTP_EXPIRED,
+      "OTP expired or invalid. Please request a new one.",
+    );
+  }
+
+  const newPasswordHash = await bcrypt.hash(input.newPassword, BCRYPT_ROUNDS);
+
+  const result = await prisma.$transaction(async (tx) => {
+    await authRepository.lockOtpRowForUpdate(tx, latest.id);
+    const fresh = await authRepository.findOtpById(latest.id, tx);
+
+    if (!fresh) return { outcome: "expired" as const };
+    if (
+      fresh.status === "INVALIDATED" ||
+      fresh.attempts >= APP_LIMITS.OTP_MAX_ATTEMPTS
+    ) {
+      return { outcome: "max_attempts" as const };
+    }
+    if (fresh.status !== "PENDING" || fresh.expiresAt < new Date()) {
+      return { outcome: "expired" as const };
+    }
+
+    const matches = await verifyOtpCodeHash(input.code, fresh.codeHash);
+    if (!matches) {
+      const newAttempts = fresh.attempts + 1;
+      if (newAttempts >= APP_LIMITS.OTP_MAX_ATTEMPTS) {
+        await authRepository.updateOtpAttempts(
+          fresh.id,
+          { attempts: newAttempts, status: "INVALIDATED" },
+          tx,
+        );
+        return { outcome: "max_attempts" as const };
+      }
+      await authRepository.updateOtpAttempts(
+        fresh.id,
+        { attempts: newAttempts },
+        tx,
+      );
+      return {
+        outcome: "mismatch" as const,
+        attemptsRemaining: APP_LIMITS.OTP_MAX_ATTEMPTS - newAttempts,
+      };
+    }
+
+    await authRepository.markOtpConsumed(fresh.id, tx);
+    await authRepository.updateUserPasswordHash(user.id, newPasswordHash, tx);
+    await authRepository.revokeAllRefreshSessionsForUser(user.id, tx);
+    return { outcome: "success" as const };
+  });
+
+  switch (result.outcome) {
+    case "expired":
+      throw new AppError(
+        400,
+        API_ERROR_CODES.OTP_EXPIRED,
+        "OTP expired or invalid. Please request a new one.",
+      );
+    case "max_attempts":
+      throw new AppError(
+        429,
+        API_ERROR_CODES.OTP_MAX_ATTEMPTS_EXCEEDED,
+        "Maximum verification attempts exceeded. Please request a new code.",
+      );
+    case "mismatch":
+      throw new AppError(
+        400,
+        API_ERROR_CODES.OTP_INVALID,
+        `Invalid OTP code. Attempts remaining: ${result.attemptsRemaining}`,
+      );
+    case "success":
+      return { message: "Password reset successfully. Please log in again." };
+  }
 }
 
 export async function login(
