@@ -66,7 +66,7 @@ Node.js **22 LTS** · Express **5** · TypeScript **5.x** · React **19** · Vit
 - **Build**: `pnpm turbo run build` — `tsup` bundles `apps/api` + `packages/shared` via `^build`
 - **Test**: `pnpm turbo run test -- --coverage` — Vitest (unit) + Supertest (contract) + Playwright (E2E), ≥80% coverage on new code, all green
 - **Graph tools**: `uvx code-review-graph build` / `detect_changes_tool`
-- PR gate: no `/pr` unless lint + typecheck + build + test all pass AND `/review` agent returns all ✅.
+- PR gate: no `/pr` unless lint + typecheck + build + test all pass AND `/review` agent returns all ✅. When invoked, `/pr` executes `openspec archive <ticket>` and immediately separates the archive folder out to `openspec/archive/<ticket>` before staging (`git add .`) and committing.
 
 ## 5. Architecture & Layering
 
@@ -119,7 +119,7 @@ Node.js **22 LTS** · Express **5** · TypeScript **5.x** · React **19** · Vit
 - `test-writer.md` MUST derive tests solely from numbered `FRS-x.y.z` requirement text (`SHALL` statements, Error Scenarios, Out-of-Scope boundaries) and `SDS.md` API/DB contracts — **NOT** from Acceptance Criteria bullet wording. An AC line must never be copied/reworded into a test name or assertion. One AC item typically yields several tests covering boundaries, concurrency, and negative paths the checklist never enumerated (e.g. FRS-1.3.4 → 4th/5th/6th-attempt tests, the 15-min-minus-1s boundary, per-email isolation — not one "rate limit works" test).
 - `reviewer.md` checks coverage against FRS requirement IDs/SDS contracts directly, never against AC-line-to-test-name matching.
 - All `supertest` and `playwright` suites MUST run against an isolated `notes_app_test` database (`.env.test` or `@testcontainers/postgresql`). **Zero** connections to `notes_app` (dev) or production. **Zero** `sqlite::memory:` substitution — native `citext`/`tsvector` require real PostgreSQL 16.
-- Suites truncate tables (`TRUNCATE ... CASCADE`) before/after runs for determinism — only ever against the test DB.
+- Suites truncate tables (`TRUNCATE ... CASCADE`) before/after runs for determinism — only ever against the test DB. Every test suite running `TRUNCATE` MUST check `process.env.DATABASE_URL?.includes('notes_app_test')` before truncating to prevent accidental data loss (`Rule 10`).
 
 ## 11. Do NOT Do (Strict Anti-Patterns)
 
@@ -140,5 +140,14 @@ Node.js **22 LTS** · Express **5** · TypeScript **5.x** · React **19** · Vit
 - `src/types/` — inferred TS DTOs (`z.infer<typeof schema>`) — never hand-duplicated.
 - `src/constants/` — `API_PATHS` (`/api/v1` + route paths), `APP_LIMITS` (all FRS numeric constants: OTP timing/attempts, rate limits, token expiries, page sizes, trash/version retention, share expiry), `VALIDATION_MESSAGES`, `API_ERROR_CODES` (`OTP_EXPIRED`, `RATE_LIMIT_EXCEEDED`, `UNAUTHORIZED`, `NOTE_NOT_FOUND`, `NOTE_TRASHED`, `SHARE_LINK_EXPIRED`, ...), `UI_COPY` (confirmation prompts: `CONFIRM_TRASH_RESTORE`, `CONFIRM_PERMANENT_DELETE`, `CONFIRM_LOGOUT`).
 
+## 13. OpenSpec Workflow & File Lifecycle Patterns
+
+The repository strictly enforces three distinct structural patterns for OpenSpec (`@fission-ai/openspec`) proposals and living specifications:
+
+1. **Active Change Proposals (`openspec/changes/<AB-xxxx-name>/`)**: When `/spec` creates a proposal, it resides here while active during implementation, testing, and review. It contains `proposal.md` (high-level objective & scope) + `specs/<domain>/spec.md` (exact RFC 2119 `SHALL/MUST` deltas), plus operational tracking files (`plan.md`, `tasks.md`, `review-log.md`). Note: `review-log.md` is the sole log where important feature review notes and action items are tracked (`fix-bundles` are not used at all).
+2. **Archived Proposals (`openspec/archive/<AB-xxxx-name>/`)**: Created exclusively when `/pr` executes `openspec archive <name>` and automatically moves the folder out to the separate `openspec/archive/` root directory. Represents the immutable historical audit trail of the merged change.
+3. **Canonical System Specs (`openspec/specs/<domain>/spec.md`)**: The permanent living specification representing the unified capabilities of the application once changes are merged.
+
 ---
+
 Full detail: `docs/FRS.md` (requirements, `FRS-x.y.z` IDs) and `docs/SDS.md` (architecture, schema, API contracts). This file is the compressed index — when in doubt, the docs are authoritative.

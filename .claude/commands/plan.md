@@ -4,8 +4,9 @@ Create technical implementation plan for: $ARGUMENTS
 Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `openspec/changes/`. If `$ARGUMENTS` was supplied as only a bare ticket ID (`AB-xxxx`), search `openspec/changes/` for the exact folder matching `AB-xxxx-*` (e.g., `openspec/changes/AB-1001-project-setup-monorepo`) and use that exact descriptive name across the plan and subsequent tasks (`[Rule 3]`).
 
 ## Preconditions & Setup
+
 1. Read canonical specification documents:
-   - `openspec/changes/$ARGUMENTS/spec.md` (canonical specification containing proposal summary and behavioral delta)
+   - `openspec/changes/$ARGUMENTS/proposal.md` and `openspec/changes/$ARGUMENTS/specs/<domain>/spec.md` (canonical proposal and behavioral deltas)
    - `docs/FRS.md` (`[FRS-x.y.z]` numbered requirement text)
    - `docs/SDS.md` (`API/DB` schemas, route table, `CHECK/GIN` constraints, status codes)
    - `docs/ux.md` (`Global Frontend UX & Visual Architecture` — strictly required for `AB-1010` to `AB-1016`)
@@ -18,7 +19,9 @@ Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `
 ---
 
 ## Plan Generation & Critical NoteApp Rules Integration
+
 Generate a comprehensive technical implementation plan (`plan.md`) covering:
+
 1. **Exact Layered File Paths**:
    - Backend (`apps/api`): Strictly separate `repositories/ -> services/ -> controllers/ -> routers/`.
    - Frontend (`apps/web`): Strictly separate `store/ -> api/ -> hooks/ -> components/ -> pages/`.
