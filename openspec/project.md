@@ -2,7 +2,7 @@
 
 Canonical specification summary for OpenSpec (`@fission-ai/openspec`) across all `/spec`, `/plan`, `/tasks`, and `/implement` phases (`AB-1001` to `AB-1016`).
 
-## 1. Project Overview (`[FRS §1–§8]`)
+## 1. Project Overview (`[FRS §1–§8, docs/ux.md]`)
 Full-stack Note-Taking App (`apps/api` Express 5 + `apps/web` React 19 + `packages/shared` Zod/types). Features:
 - **Auth**: Case-insensitive `Citext` email, 6-digit OTP states (`CONSUMED | INVALIDATED`), 15m JWT in client JS memory (`useAuthStore`), 7d `HttpOnly` cookie refresh sessions (`refreshToken`) with silent rotation and rate limiting (`5 wrong passwords / 15m -> 429`).
 - **Notes & Trash**: Rich-text TipTap notes with two-stage soft delete: Stage 1 (`30d restorable`) -> Stage 2 (`30d audit-only`) -> permanent cascade purge (`03:00 UTC` cron).
@@ -13,7 +13,7 @@ Full-stack Note-Taking App (`apps/api` Express 5 + `apps/web` React 19 + `packag
 ## 2. Tech Stack (`Locked & Pinned — Rule 20`)
 - **Runtime**: Node.js 22 LTS · TypeScript 5.x · `pnpm workspaces` (v9.x) · Turborepo (`build` depends on `^build`)
 - **Backend (`apps/api`)**: Express 5 · Prisma ORM 16 (`Citext` native extension) · Zod 3.x · Node Cron
-- **Frontend (`apps/web`)**: React 19 · Vite 6 · TanStack Query v5 · Zustand · TipTap (`@tiptap/react`) · shadcn/ui
+- **Frontend (`apps/web`)**: React 19 · Vite 6 · TanStack Query v5 · Zustand · TipTap (`@tiptap/react`) · shadcn/ui · `docs/ux.md` (<100ms loading, skeletons, `sonner` toasts, errorMessages.ts)
 - **Database**: PostgreSQL 16 Alpine (`Citext` + GIN indexes; isolated `notes_app` dev & `notes_app_test` test containers)
 - **Zero Version Ranges (`Rule 20`)**: All manifests pinned to exact versions (`no ^ ~ * >=`).
 

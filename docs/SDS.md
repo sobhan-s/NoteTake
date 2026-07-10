@@ -647,28 +647,28 @@ Every single feature or infrastructure ticket (`AB-1001` to `AB-1016`) MUST exec
 
 1. **Workspace Directory Structure (`openspec/`)**:
    - `openspec/config.yaml`: Core configuration and validation parameters for `@fission-ai/openspec`.
-   - `openspec/changes/`: Houses active specification proposals for in-progress tickets (e.g., `openspec/changes/AB-1002/` containing `spec.md`, `delta-openapi.yaml`, and `tasks.md`).
-   - `openspec/archive/`: Houses finalized, reviewed, and merged specifications (`[Rule 18]`). Running `openspec archive AB-xxxx` migrates the completed spec from `changes/` to `archive/`.
+   - `openspec/changes/`: Houses active specification proposals for in-progress tickets (e.g., `openspec/changes/AB-1002-auth-rate-limiting/` containing `proposal.md`, `spec.md`, `plan.md`, and `tasks.md`). All folders MUST use descriptive kebab-case naming (`AB-xxxx-descriptive-name`).
+   - `openspec/archive/`: Houses finalized, reviewed, and merged specifications (`[Rule 18]`). Running `openspec archive AB-xxxx-descriptive-name` migrates the completed spec from `changes/` to `archive/`.
    - `openspec/specs/`: Canonical domain specs synthesized over time across the monorepo lifecycle.
 2. **Mandatory SDD Execution Loop (`[Rules 1–3, 18, DoD]`)**:
-   - **`/spec AB-xxxx` (`Rule 1`)**: Scaffolds exact behavioral scenarios and `delta-openapi.yaml` inside `openspec/changes/AB-xxxx/`.
-   - **Review Delta Spec (`Rule 2`)**: `delta-openapi.yaml` must be human-reviewed and approved before generating the technical plan.
-   - **`/plan` → `/tasks` (`Rule 3`)**: Technical plan approved → broken into trackable `tasks.md`.
-   - **`/implement` & Validation (`DoD`)**: During and after implementation, `openspec validate` is executed to guarantee 100% adherence between code and the approved delta spec.
-   - **`/review AB-xxxx` (`Rule 16–17`)**: Read-only `reviewer` sub-agent checks compliance in a clean terminal (`all ✅ required`).
-   - **`openspec archive AB-xxxx` (`Rule 18`)**: Immediately before raising the pull request (`/pr`), the specification is archived (`changes/AB-xxxx` → `archive/AB-xxxx`).
+   - **`/spec AB-xxxx-short-description` (`Rule 1`)**: Scaffolds exact behavioral scenarios (`spec.md`) and proposal inside `openspec/changes/AB-xxxx-descriptive-name/`.
+   - **Review Delta Spec (`Rule 2`)**: `spec.md` and proposal must be human-reviewed and approved before generating the technical plan.
+   - **`/plan` → `/tasks` (`Rule 3`)**: Technical plan (`plan.md`) approved → broken into trackable `tasks.md` checklist items.
+   - **`/implement` & Validation (`DoD`)**: Executes Main Claude -> Tester (`test-writer`) -> Reviewer -> Triage loop. `openspec validate` is executed to guarantee 100% adherence between code and the approved delta spec.
+   - **`/review AB-xxxx-descriptive-name` (`Rule 16–17`)**: Read-only `reviewer` sub-agent checks compliance (`review-log.md` must be `all ✅ PASSED`).
+   - **`openspec archive AB-xxxx-descriptive-name` (`Rule 18`)**: Immediately before raising the pull request (`/pr`), the specification is archived (`changes/AB-xxxx` → `archive/AB-xxxx`).
 
 The root-level `.claude/` directory (`/.claude/`) houses the custom slash commands (`commands/`), read-only sub-agents (`agents/`), skills (`skills/`), and MCP configurations (`settings.json`). The slash commands orchestrate the OpenSpec development lifecycle:
 
 | Command      | Execution Workflow & Spec Task                                                                                                                          |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/start`     | Inspect workspace state, verify Node v22/PostgreSQL 16, run `pnpm install --frozen-lockfile`, and check active branch.                                  |
-| `/spec`      | Parse target ticket `AB-10xx`, extract exact `[FRS-x.y.z]` requirements, and generate structured behavioral specification scenarios (`spec.md`).        |
-| `/plan`      | Map `spec.md` against `SDS.md` architectural contracts and generate step-by-step technical implementation plan (`implementation_plan.md`).              |
-| `/tasks`     | Deconstruct `implementation_plan.md` into granular, trackable `task.md` checklist items (`[ ]`, `[/]`, `[x]`).                                          |
-| `/implement` | Execute code changes cleanly across layered architecture (`routers -> controllers -> services -> repositories -> shared`).                              |
-| `/review`    | Dispatch read-only `reviewer.md` sub-agent to audit code changes against `FRS.md` and `SDS.md` for 100% compliance.                                     |
-| `/pr`        | Run verification suite (`pnpm turbo run lint typecheck build test`), format canonical commit header (`feat(scope): description AB#ticket`), and generate PR body. |
+| `/start`     | Inspect workspace state, load `AGENTS.md`, `CLAUDE.md`, `FRS.md`, `SDS.md`, and `ux.md`, verify Node v22/PostgreSQL 16, and enforce `AB-xxxx-descriptive-name` rule. |
+| `/spec`      | Parse target ticket `AB-xxxx-descriptive-name`, extract exact `[FRS-x.y.z]` requirements (and `ux.md` for UI), and generate structured behavioral proposal (`proposal.md` & `spec.md`). |
+| `/plan`      | Map proposal against `SDS.md` and `ux.md` architectural contracts and generate step-by-step technical implementation plan (`plan.md`).                  |
+| `/tasks`     | Deconstruct `plan.md` into granular, trackable `tasks.md` checklist items (`[ ]`, `[/]`, `[x]`) mapped to explicit `[FRS-x.y.z]` tags across Phase 1-4.   |
+| `/implement` | Execute code changes via Role-Separated Orchestrator loop (Main Claude -> `test-writer` -> `reviewer` -> Triage) across layered architecture.           |
+| `/review`    | Dispatch read-only `reviewer.md` sub-agent to audit code changes against 7-part Compliance Table (`FRS.md`, `SDS.md`, `ux.md`). Append to `review-log.md`. |
+| `/pr`        | Check Preconditions Gate (`[Rule 16-17]`), run verification suite (`pnpm turbo run lint typecheck build test`), and format commit header (`feat(scope): description AB#ticket`). |
 
 #### Read-Only Sub-Agents (`.claude/agents/`)
 

@@ -1,20 +1,23 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Full-Stack Note-Taking Application Monorepo (Node.js 22 LTS, Express 5, React 19, Vite 6, Prisma ORM, PostgreSQL 16 Alpine, Citext + tsvector GIN index).
+  All specifications, proposals, and implementations must strictly obey docs/FRS.md (v2.1) and docs/SDS.md (v1.5).
+  Single source of truth is packages/shared (@shared/core) for all Zod schemas, TypeScript DTOs, and Tier 1 constants (API_PATHS, APP_LIMITS, UI_COPY, ERROR_CODES). Zero duplication allowed.
+  Layered backend architecture: routers -> controllers -> services -> repositories -> shared. Controllers only do input validation via Zod and return unified { success: true, data } wrappers; zero SQL and zero Zod schema definitions inside controllers.
+  Authentication: JWT access tokens (15m expiry) held purely in client JS memory (Zustand useAuthStore) - NEVER in localStorage/sessionStorage. Refresh tokens (7d expiry) sent as HttpOnly, Secure, SameSite=Strict cookies with silent rotation.
+  Definition of Done (DoD): All code changes must pass pnpm turbo run build (tsup bundling), pnpm turbo run lint (--max-warnings 0), pnpm turbo run typecheck (tsc --noEmit), and pnpm turbo run test -- --coverage (>=80% coverage on new code against isolated notes_app_test DB).
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - ALWAYS use specific, descriptive, human-readable kebab-case folder and file names along with the ticket ID (e.g., changes/AB-1001-project-setup-monorepo/ or changes/AB-1002-auth-rate-limiting/). NEVER create a directory, proposal, or specification file using just a bare ticket ID like AB-1001/ or AB-1001.yaml.
+    - Every proposal must cite specific numbered [FRS-x.y.z] requirement IDs and exact SDS.md section references.
+    - Every scenario must use precise RFC 2119 terminology (SHALL/MUST, never 'should').
+    - Include an explicit 'Out of Scope' section defining exact boundaries.
+  specs:
+    - Naming convention MUST be descriptive (e.g., AB-1001-auth-domain-spec.md). Never use just the ticket ID alone.
+    - Enforce exact data shapes matching packages/shared Zod schemas and DTO contracts.
+  tasks:
+    - Every task item must list exact file paths to create or modify across the layered architecture (routers/ -> controllers/ -> services/ -> repositories/).
+    - Every task check item must trace directly to at least one [FRS-x.y.z] requirement ID.
+    - Mandatory quality checkpoints after Phase 1 and Phase 2: pnpm turbo run build -> pnpm turbo run lint -> pnpm turbo run typecheck -> pnpm turbo run test -- --coverage.
