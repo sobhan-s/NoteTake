@@ -2,11 +2,13 @@
   "mcpServers": {
     "code-review-graph": {
       "command": "uvx",
-      "args": [
-        "code-review-graph",
-        "serve"
-      ],
+      "args": ["code-review-graph", "serve"],
       "cwd": "/home/sobhan-sahoo/code/note_taking_app",
+      "type": "stdio"
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
       "type": "stdio"
     }
   }

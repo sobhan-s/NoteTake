@@ -12,9 +12,14 @@ impact, ALWAYS try `crg` MCP tools first: `detect_changes`, `get_impact_radius`,
 `query_graph` (~82x–528x token savings vs. raw file reads). Fall back to raw
 reads only when the semantic graph doesn't cover the specific query.
 
+## 1a. Live Third-Party API Verification: `context7` (`FRS-0.3.1`)
+
+Before writing code against any third-party library API (Prisma, Express 5, TipTap, TanStack Query, React 19, or any other dependency in `AGENTS.md §3`), consult the `context7` MCP server for the library's current API shape rather than relying solely on training data. Training data goes stale; a library's actual published API is the source of truth. Fall back to `npm view <package> version`/`WebFetch` against official docs only if `context7` doesn't cover the specific library.
+
 ## 2. Permission Gates
 
 Ask `[y/n]` before **every single**:
+
 - Git operation: `add`, `commit`, `push`, `checkout`, `branch`, `merge`, `rebase`.
 - DB migration: `pnpm --filter @apps/api prisma migrate dev`.
 - Delete or overwrite of an existing file.
@@ -33,22 +38,23 @@ Proceed automatically, no prompt, for local read-only verification:
 
 ## 4. Thinking Depth
 
-| Task class | Depth |
-|---|---|
-| Bug fix / one-off syntax tweak | default |
-| Multi-file feature / Zod schema update | `"think hard before starting"` |
-| Architecture / concurrency / DB transactions | `"ultrathink"` |
+| Task class                                   | Depth                          |
+| -------------------------------------------- | ------------------------------ |
+| Bug fix / one-off syntax tweak               | default                        |
+| Multi-file feature / Zod schema update       | `"think hard before starting"` |
+| Architecture / concurrency / DB transactions | `"ultrathink"`                 |
 
 ## 5. Commit & Branch Naming (Rule 14)
 
 - Commit header: exact format is in `AGENTS.md` §6 (`type(scope): description
-  AB#ticket`; types `feat|fix|chore|docs|refactor|test`).
+AB#ticket`; types `feat|fix|chore|docs|refactor|test`).
 - Branch: `feature/{domain}/AB-{ticket}-{short-name}` or
   `fix/{domain}/AB-{ticket}-{short-name}`.
 
 ## 6. Quality Gates — Definition of Done (Rule 12)
 
 After every `/tasks` checkpoint, all four must pass before moving on:
+
 1. `pnpm turbo run build` → 0 errors.
 2. `pnpm turbo run lint` → `--max-warnings 0`.
 3. `pnpm turbo run typecheck` → 0 static type errors.
@@ -56,11 +62,13 @@ After every `/tasks` checkpoint, all four must pass before moving on:
    `notes_app_test`, ≥80% coverage on new code.
 
 Before every commit (Husky `pre-commit` / `commit-msg`):
+
 - `npx commitlint --from HEAD~1` must pass cleanly.
 - NEVER commit, or run `/pr`, if any test fails, lint has warnings, or
   typecheck reports errors.
 
 <!-- code-review-graph MCP tools -->
+
 ## MCP Tools: code-review-graph
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the
@@ -81,16 +89,16 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 
 ### Key Tools
 
-| Tool | Use when |
-| ------ | ---------- |
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
+| Tool                        | Use when                                               |
+| --------------------------- | ------------------------------------------------------ |
+| `detect_changes`            | Reviewing code changes — gives risk-scored analysis    |
+| `get_review_context`        | Need source snippets for review — token-efficient      |
+| `get_impact_radius`         | Understanding blast radius of a change                 |
+| `get_affected_flows`        | Finding which execution paths are impacted             |
+| `query_graph`               | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes`     | Finding functions/classes by name or keyword           |
+| `get_architecture_overview` | Understanding high-level codebase structure            |
+| `refactor_tool`             | Planning renames, finding dead code                    |
 
 ### Workflow
 
