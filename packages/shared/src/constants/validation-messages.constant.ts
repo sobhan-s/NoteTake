@@ -19,4 +19,5 @@ export const VALIDATION_MESSAGES = {
   TAG_COLOR_INVALID: "Color must be a valid hex code (e.g. #6B7280)",
   TAG_UPDATE_EMPTY: "At least one of name or color must be provided",
   TAG_NAME_CONFLICT: "A tag with this name already exists",
+  SEARCH_QUERY_REQUIRED: "Search query is required",
 } as const;

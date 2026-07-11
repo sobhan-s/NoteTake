@@ -127,3 +127,81 @@ export function countTrashedNotesForUser(
     },
   });
 }
+
+function buildSearchTagFilterSql(
+  tagIds: string[] | undefined,
+  tagMode: "ALL" | "ANY",
+  placeholderIndex: number,
+): string {
+  if (!tagIds || tagIds.length === 0) return "";
+  return tagMode === "ALL"
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM unnest($${placeholderIndex}::uuid[]) AS required(tag_id)
+         WHERE NOT EXISTS (
+           SELECT 1 FROM note_tags nt WHERE nt.note_id = n.id AND nt.tag_id = required.tag_id
+         )
+       )`
+    : `AND EXISTS (
+         SELECT 1 FROM note_tags nt WHERE nt.note_id = n.id AND nt.tag_id = ANY($${placeholderIndex}::uuid[])
+       )`;
+}
+
+type RawDb = Pick<Prisma.TransactionClient, "$queryRawUnsafe">;
+
+type SearchRow = {
+  id: string;
+  title: string;
+  updated_at: Date;
+  snippet: string;
+};
+
+type SearchNotesParams = {
+  userId: string;
+  query: string;
+  page: number;
+  limit: number;
+  tagIds?: string[];
+  tagMode: "ALL" | "ANY";
+};
+
+export function searchNotesForUser(
+  params: SearchNotesParams,
+  db: RawDb = prisma,
+): Promise<SearchRow[]> {
+  const { userId, query, page, limit, tagIds, tagMode } = params;
+  const offset = (page - 1) * limit;
+  const tagClause = buildSearchTagFilterSql(tagIds, tagMode, 5);
+  const args: unknown[] = [userId, query, limit, offset];
+  if (tagIds && tagIds.length > 0) args.push(tagIds);
+  return db.$queryRawUnsafe<SearchRow[]>(
+    `SELECT n.id, n.title, n.updated_at,
+            ts_headline('english', n.body, plainto_tsquery('english', $2),
+                        'StartSel=[[[MARK]]], StopSel=[[[MARK_END]]], MaxWords=35, MinWords=15') AS snippet
+     FROM notes n
+     WHERE n.user_id = $1::uuid AND n.deleted_at IS NULL
+       AND n.search_vector @@ plainto_tsquery('english', $2)
+       ${tagClause}
+     ORDER BY ts_rank(n.search_vector, plainto_tsquery('english', $2)) DESC, n.updated_at DESC
+     LIMIT $3 OFFSET $4`,
+    ...args,
+  );
+}
+
+export async function countSearchNotesForUser(
+  params: Omit<SearchNotesParams, "page" | "limit">,
+  db: RawDb = prisma,
+): Promise<number> {
+  const { userId, query, tagIds, tagMode } = params;
+  const tagClause = buildSearchTagFilterSql(tagIds, tagMode, 3);
+  const args: unknown[] = [userId, query];
+  if (tagIds && tagIds.length > 0) args.push(tagIds);
+  const rows = await db.$queryRawUnsafe<{ count: number }[]>(
+    `SELECT COUNT(*)::int AS count
+     FROM notes n
+     WHERE n.user_id = $1::uuid AND n.deleted_at IS NULL
+       AND n.search_vector @@ plainto_tsquery('english', $2)
+       ${tagClause}`,
+    ...args,
+  );
+  return rows[0]?.count ?? 0;
+}
