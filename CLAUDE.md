@@ -5,16 +5,35 @@
 Behavioral rules for Claude Code only. Architecture, stack, schema, and layering
 live in `AGENTS.md` (loaded above) — never restate them here.
 
-## 1. MCP Priority: `code-review-graph` (crg)
+## 1. Tool Priority
+
+### 1a. Code exploration & review: `code-review-graph` (crg)
 
 Before reaching for `Grep`, `Glob`, or `Read` to explore code or assess change
-impact, ALWAYS try `crg` MCP tools first: `detect_changes`, `get_impact_radius`,
-`query_graph` (~82x–528x token savings vs. raw file reads). Fall back to raw
-reads only when the semantic graph doesn't cover the specific query.
+impact, ALWAYS try `crg` MCP tools first (~82x–528x token savings vs. raw file
+reads). Fall back to raw reads only when the semantic graph doesn't cover the
+specific query.
 
-## 1a. Live Third-Party API Verification: `context7` (`FRS-0.3.1`)
+| Task                            | Tool                                                               |
+| ------------------------------- | ------------------------------------------------------------------ |
+| Explore code / find symbols     | `semantic_search_nodes`, `query_graph`                             |
+| Assess blast radius of a change | `get_impact_radius`, `get_affected_flows`                          |
+| Review a diff                   | `detect_changes` + `get_review_context`                            |
+| Trace relationships             | `query_graph` (`callers_of`/`callees_of`/`imports_of`/`tests_for`) |
+| Architecture overview           | `get_architecture_overview`, `list_communities`                    |
+| Plan renames / find dead code   | `refactor_tool`                                                    |
 
-Before writing code against any third-party library API (Prisma, Express 5, TipTap, TanStack Query, React 19, or any other dependency in `AGENTS.md §3`), consult the `context7` MCP server for the library's current API shape rather than relying solely on training data. Training data goes stale; a library's actual published API is the source of truth. Fall back to `npm view <package> version`/`WebFetch` against official docs only if `context7` doesn't cover the specific library.
+The graph auto-updates on file changes via hooks — no manual refresh needed.
+
+### 1b. Live third-party API verification: `context7` (`FRS-0.3.1`)
+
+Before writing code against any third-party library API (Prisma, Express 5,
+TipTap, TanStack Query, React 19, or any other dependency listed in
+`AGENTS.md §3`), consult `context7` for the library's current API shape rather
+than relying on training data — a library's published API is the source of
+truth, and training data goes stale. Fall back to `npm view <package> version`
+or `WebFetch` against official docs only if `context7` doesn't cover the
+library.
 
 ## 2. Permission Gates
 
@@ -46,8 +65,9 @@ Proceed automatically, no prompt, for local read-only verification:
 
 ## 5. Commit & Branch Naming (Rule 14)
 
-- Commit header: exact format is in `AGENTS.md` §6 (`type(scope): description
-AB#ticket`; types `feat|fix|chore|docs|refactor|test`).
+- Commit header: exact format is in `AGENTS.md` §6
+  (`type(scope): description AB#ticket`; types
+  `feat|fix|chore|docs|refactor|test`).
 - Branch: `feature/{domain}/AB-{ticket}-{short-name}` or
   `fix/{domain}/AB-{ticket}-{short-name}`.
 
@@ -66,43 +86,3 @@ Before every commit (Husky `pre-commit` / `commit-msg`):
 - `npx commitlint --from HEAD~1` must pass cleanly.
 - NEVER commit, or run `/pr`, if any test fails, lint has warnings, or
   typecheck reports errors.
-
-<!-- code-review-graph MCP tools -->
-
-## MCP Tools: code-review-graph
-
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
-
-### When to use graph tools FIRST
-
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool                        | Use when                                               |
-| --------------------------- | ------------------------------------------------------ |
-| `detect_changes`            | Reviewing code changes — gives risk-scored analysis    |
-| `get_review_context`        | Need source snippets for review — token-efficient      |
-| `get_impact_radius`         | Understanding blast radius of a change                 |
-| `get_affected_flows`        | Finding which execution paths are impacted             |
-| `query_graph`               | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes`     | Finding functions/classes by name or keyword           |
-| `get_architecture_overview` | Understanding high-level codebase structure            |
-| `refactor_tool`             | Planning renames, finding dead code                    |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.

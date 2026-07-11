@@ -1,23 +1,27 @@
-import express, {
-  type Express,
-  type Request,
-  type Response,
-  type NextFunction,
-} from "express";
+import express, { type Express } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+import swaggerUi from "swagger-ui-express";
+import { API_PATHS } from "@shared/core/constants";
 import router from "./routers/index.js";
+import { errorMiddleware } from "./middlewares/error.middleware.js";
+import { buildOpenApiDocument } from "./docs/openapi.js";
+import { startCleanupJob } from "./jobs/cleanup.job.js";
 
 const app: Express = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 app.use(router);
+app.use(
+  `${API_PATHS.BASE}/docs`,
+  swaggerUi.serve,
+  swaggerUi.setup(buildOpenApiDocument()),
+);
 
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  res.status(500).json({
-    success: false,
-    error: { code: "INTERNAL_ERROR", message: err.message },
-  });
-});
+app.use(errorMiddleware);
+
+startCleanupJob();
 
 export default app;

@@ -2,7 +2,7 @@ You are MAIN CLAUDE — the implementer (`/implement $ARGUMENTS`).
 You write implementation code yourself. After EACH completed task, you invoke two watcher sub-agents (`test-writer`, `reviewer`) to independently verify your work (`[FRS-0.3, FRS-0.3.2]`).
 
 **Strict OpenSpec Naming Rule (`AB-xxxx-descriptive-name`)**:
-Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `openspec/changes/`. If `$ARGUMENTS` was supplied as only a bare ticket ID (`AB-xxxx`), search `openspec/changes/` for the exact folder matching `AB-xxxx-*` (e.g., `openspec/changes/AB-1001-project-setup-monorepo`) and use that exact descriptive name when loading proposal, plan, and tasks.
+Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `openspec/changes/`. If `$ARGUMENTS` was supplied as only a bare ticket ID (`AB-xxxx`), search `openspec/changes/` for the exact folder matching `AB-xxxx-*` (e.g., `openspec/changes/AB-1001-project-setup-monorepo`) and use that exact descriptive name when loading specification, plan, and tasks.
 
 ## Preconditions & Setup
 
@@ -106,8 +106,8 @@ Once every item in `tasks.md` is marked `[x]`:
 2. Verify total compilation success (`0 errors` via `tsup` / `^build`), zero lint warnings (`--max-warnings 0`), 0 static type errors (`tsc --noEmit`).
 3. Verify test coverage $\ge 80\%$ on new code (`100% green against notes_app_test`).
 4. Run `openspec validate` against the spec delta inside `openspec/changes/$ARGUMENTS/specs/`.
-5. Verify `openspec/changes/$ARGUMENTS/proposal.md`, `tasks.md`, `review-log.md`, and `docs/FRS.md` are 100% in sync.
+5. Verify `openspec/changes/$ARGUMENTS/specs/<domain>/spec.md`, `tasks.md`, `review-log.md`, and `docs/FRS.md` are 100% in sync.
 6. **STOP and report to user**:
-   > "Implementation complete (`100% DoD compliant`). Run `/review $ARGUMENTS` to perform read-only compliance audit. Once review passes, run `/pr $ARGUMENTS` to archive the proposal (`openspec archive`) and create the pull request."
+   > "Implementation complete (`100% DoD compliant`). Run `/review $ARGUMENTS` to perform read-only compliance audit. Once review passes, run `/pr $ARGUMENTS` to archive the specification (`openspec archive`) and create the pull request."
 
 Format: `/implement AB-xxxx-short-description`

@@ -142,10 +142,10 @@ Node.js **22 LTS** · Express **5** · TypeScript **5.x** · React **19** · Vit
 
 ## 13. OpenSpec Workflow & File Lifecycle Patterns
 
-The repository strictly enforces three distinct structural patterns for OpenSpec (`@fission-ai/openspec`) proposals and living specifications:
+The repository strictly enforces three distinct structural patterns for OpenSpec (`@fission-ai/openspec`) specifications:
 
-1. **Active Change Proposals (`openspec/changes/<AB-xxxx-name>/`)**: When `/spec` creates a proposal, it resides here while active during implementation, testing, and review. It contains `proposal.md` (high-level objective & scope) + `specs/<domain>/spec.md` (exact RFC 2119 `SHALL/MUST` deltas), plus operational tracking files (`plan.md`, `tasks.md`, `review-log.md`). Note: `review-log.md` is the sole log where important feature review notes and action items are tracked (`fix-bundles` are not used at all).
-2. **Archived Proposals (`openspec/archive/<AB-xxxx-name>/`)**: Created exclusively when `/pr` executes `openspec archive <name>` and automatically moves the folder out to the separate `openspec/archive/` root directory. Represents the immutable historical audit trail of the merged change.
+1. **Active Change Specifications (`openspec/changes/<AB-xxxx-name>/`)**: When `/spec` creates a specification delta, it resides here while active during implementation, testing, and review. It contains `specs/<domain>/spec.md` (canonical specification with objective & exact RFC 2119 `SHALL/MUST` deltas), plus operational tracking files (`plan.md`, `tasks.md`, `review-log.md`). Note: extra proposal or summary files (`proposal.md`) are NOT used at all per strict user instruction; `review-log.md` is the sole log where important feature review notes and action items are tracked (`fix-bundles` are not used at all).
+2. **Archived Specifications (`openspec/archive/<AB-xxxx-name>/`)**: Created exclusively when `/pr` executes `openspec archive <name>` and automatically moves the folder out to the separate `openspec/archive/` root directory. Represents the immutable historical audit trail of the merged change.
 3. **Canonical System Specs (`openspec/specs/<domain>/spec.md`)**: The permanent living specification representing the unified capabilities of the application once changes are merged.
 
 ---

@@ -6,7 +6,7 @@ Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `
 ## Preconditions & Setup
 
 1. Read canonical specification documents:
-   - `openspec/changes/$ARGUMENTS/proposal.md` and `openspec/changes/$ARGUMENTS/specs/<domain>/spec.md` (canonical proposal and behavioral deltas)
+   - `openspec/changes/$ARGUMENTS/specs/<domain>/spec.md` (canonical specification and behavioral deltas)
    - `docs/FRS.md` (`[FRS-x.y.z]` numbered requirement text)
    - `docs/SDS.md` (`API/DB` schemas, route table, `CHECK/GIN` constraints, status codes)
    - `docs/ux.md` (`Global Frontend UX & Visual Architecture` — strictly required for `AB-1010` to `AB-1016`)
@@ -45,4 +45,4 @@ Generate a comprehensive technical implementation plan (`plan.md`) covering:
 Save generated plan to: `openspec/changes/$ARGUMENTS/plan.md`
 Wait for explicit user `APPROVED` confirmation (`[Rule 3]`) before proceeding to `/tasks` or `/implement`.
 
-Format: `/plan AB-xxxx-short-description`
+Format: `/plan ab-xxxx-short-description`

@@ -1,6 +1,6 @@
 # AB-1001 — Technical Implementation Plan
 
-**Source spec:** `openspec/changes/ab-1001-project-setup-monorepo/spec.md` (all 7 clarifying questions resolved)
+**Source spec:** `openspec/changes/AB-1001-project-setup-monorepo/spec.md` (all 7 clarifying questions resolved)
 **Scope class:** INFRA (`AB-1001`) — scaffolding only, zero feature/business logic.
 
 ---

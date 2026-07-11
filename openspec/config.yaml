@@ -9,13 +9,13 @@ context: |
   Definition of Done (DoD): All code changes must pass pnpm turbo run build (tsup bundling), pnpm turbo run lint (--max-warnings 0), pnpm turbo run typecheck (tsc --noEmit), and pnpm turbo run test -- --coverage (>=80% coverage on new code against isolated notes_app_test DB).
 
 rules:
-  proposal:
-    - ALWAYS use specific, descriptive, human-readable kebab-case folder and file names along with the ticket ID (e.g., changes/AB-1001-project-setup-monorepo/ or changes/AB-1002-auth-rate-limiting/). NEVER create a directory, proposal, or specification file using just a bare ticket ID like AB-1001/ or AB-1001.yaml.
-    - Active change proposals MUST remain inside openspec/changes/<AB-xxxx-name>/ during implementation, testing, and review (`proposal.md` + `specs/<domain>/spec.md`).
-    - Archiving (`openspec archive`) MUST ONLY be executed during `/pr` creation (`pr.md`), which merges `specs/` deltas into `openspec/specs/<domain>/spec.md` and moves the proposal out to the hardcoded separated `openspec/archive/<AB-xxxx-name>/` directory.
-    - Every proposal must cite specific numbered [FRS-x.y.z] requirement IDs and exact SDS.md section references.
+  change:
+    - ALWAYS use specific, descriptive, human-readable kebab-case folder and file names along with the ticket ID (e.g., changes/AB-1001-project-setup-monorepo/ or changes/AB-1002-auth-rate-limiting/). NEVER create a directory or specification file using just a bare ticket ID like AB-1001/ or AB-1001.yaml.
+    - Active change specifications MUST remain inside openspec/changes/<AB-xxxx-name>/ during implementation, testing, and review (`specs/<domain>/spec.md`).
+    - Archiving (`openspec archive`) MUST ONLY be executed during `/pr` creation (`pr.md`), which merges `specs/` deltas into `openspec/specs/<domain>/spec.md` and moves the change out to the hardcoded separated `openspec/archive/<AB-xxxx-name>/` directory.
+    - Every change specification must cite specific numbered [FRS-x.y.z] requirement IDs and exact SDS.md section references.
     - Every scenario must use precise RFC 2119 terminology (SHALL/MUST, never 'should').
-    - Include an explicit 'Out of Scope' section defining exact boundaries.
+    - Include an explicit 'Out of Scope' section defining exact boundaries directly inside `specs/<domain>/spec.md`.
   specs:
     - Naming convention MUST be descriptive (e.g., AB-1001-auth-domain-spec.md). Never use just the ticket ID alone.
     - Enforce exact data shapes matching packages/shared Zod schemas and DTO contracts.
