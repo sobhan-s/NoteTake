@@ -168,7 +168,22 @@ describe("[FRS-1.2] POST /auth/verify-otp", () => {
     expect(res.body.error.message).toMatch(/request a new one/i);
   });
 
-  it("[FRS-1.2.4a, verifyOtpSchema] SHALL accept `userId` (instead of `email`) as the identifier, and SHALL treat OtpType as an isolation key — a PASSWORD_RESET lookup for a user who only has an EMAIL_VERIFICATION OTP SHALL return the generic 400 OTP_EXPIRED", async () => {
+  it("[FRS-1.2.4a, verifyOtpSchema] SHALL accept `userId` (instead of `email`) as the identifier for a valid EMAIL_VERIFICATION lookup", async () => {
+    const email = "verify-userid-identifier@example.com";
+    const { userId, code } = await registerAndCaptureOtp(email);
+
+    const res = await request(app)
+      .post(ROUTES.VERIFY_OTP)
+      .send({ userId, code, type: "EMAIL_VERIFICATION" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    expect(user?.isVerified).toBe(true);
+  });
+
+  it("[FRS-1.5.1 scope-tightening, verifyOtpSchema] SHALL reject a `userId`-identified request submitting `type: 'PASSWORD_RESET'` with 400 VALIDATION_ERROR at the schema layer, before any OtpType-isolation lookup runs, leaving the user's EMAIL_VERIFICATION OtpCode row untouched", async () => {
     const email = "verify-cross-type-isolation@example.com";
     const { userId } = await registerAndCaptureOtp(email);
 
@@ -177,13 +192,31 @@ describe("[FRS-1.2] POST /auth/verify-otp", () => {
       .send({ userId, code: "123456", type: "PASSWORD_RESET" });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe(API_ERROR_CODES.OTP_EXPIRED);
+    expect(res.body.error.code).toBe(API_ERROR_CODES.VALIDATION_ERROR);
 
-    // The EMAIL_VERIFICATION OTP for this user must remain untouched by the mismatched-type lookup.
+    // The EMAIL_VERIFICATION OTP for this user must remain untouched by the rejected request.
     const emailVerificationOtp = await prisma.otpCode.findFirst({
       where: { userId, type: "EMAIL_VERIFICATION" },
     });
     expect(emailVerificationOtp?.status).toBe("PENDING");
     expect(emailVerificationOtp?.attempts).toBe(0);
+  });
+
+  it("[FRS-1.5.1 scope-tightening] SHALL reject a `type: 'PASSWORD_RESET'` request with 400 VALIDATION_ERROR before the service layer runs, leaving the OtpCode row's status/attempts completely untouched", async () => {
+    const email = "verify-password-reset-type-rejected@example.com";
+    const { userId, code } = await registerAndCaptureOtp(email);
+
+    const res = await request(app)
+      .post(ROUTES.VERIFY_OTP)
+      .send({ email, code, type: "PASSWORD_RESET" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe(API_ERROR_CODES.VALIDATION_ERROR);
+
+    const otp = await prisma.otpCode.findFirst({
+      where: { userId, type: "EMAIL_VERIFICATION" },
+    });
+    expect(otp?.status).toBe("PENDING");
+    expect(otp?.attempts).toBe(0);
   });
 });

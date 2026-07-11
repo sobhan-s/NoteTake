@@ -30,13 +30,13 @@ _(Note: This command merges delta scenarios from `openspec/changes/$ARGUMENTS/sp
 
 ### STEP 1b — Hardcoded Archive Folder Separation & Meaningful Naming (`[Rule 18]`)
 
-Because `@fission-ai/openspec` defaults to placing archives inside `openspec/changes/archive/` and prepends random/date prefix numbers (`YYYY-MM-DD-`), immediately enforce hardcoded top-level separation and clean meaningful naming by moving and renaming the folder into `openspec/archive/$ARGUMENTS/`:
+Because `@fission-ai/openspec` defaults to placing archives inside `openspec/changes/archive/` and prepends random/date prefix numbers (`YYYY-MM-DD-`), immediately enforce hardcoded top-level separation and clean meaningful naming by moving and renaming the folder into `openspec/archive/$ARGUMENTS/`, and automatically flatten `specs/<domain>/spec.md` directly into `openspec/archive/$ARGUMENTS/spec.md`:
 
 ```bash
-mkdir -p openspec/archive && mv openspec/changes/archive/*$ARGUMENTS* openspec/archive/$ARGUMENTS 2>/dev/null || (mv openspec/changes/archive/* openspec/archive/ 2>/dev/null || true) && rm -rf openspec/changes/archive
+mkdir -p openspec/archive && mv openspec/changes/archive/*$ARGUMENTS* openspec/archive/$ARGUMENTS 2>/dev/null || (mv openspec/changes/archive/* openspec/archive/ 2>/dev/null || true) && rm -rf openspec/changes/archive && find openspec/archive/$ARGUMENTS/specs/ -name "spec.md" -exec mv {} openspec/archive/$ARGUMENTS/spec.md \; 2>/dev/null && rm -rf openspec/archive/$ARGUMENTS/specs && rm -rf openspec/specs
 ```
 
-_(This ensures `openspec/changes/` remains strictly for active changes, and `openspec/archive/$ARGUMENTS/` is a separate top-level folder stripped of any random numbers and given its clean, meaningful ticket change name)._
+_(This ensures `openspec/changes/` remains strictly for active changes, and `openspec/archive/$ARGUMENTS/` is a separate top-level folder stripped of any random numbers, given its clean, meaningful ticket change name, with all tracking files and `spec.md` cleanly flattened right at the root)._
 
 ### STEP 2 — Diff & Git Staging Gate (`CLAUDE.md §2`)
 
@@ -73,8 +73,7 @@ _(This ensures `openspec/changes/` remains strictly for active changes, and `ope
    ## OpenSpec Lifecycle & Artifacts
 
    - [x] Specification archived via `openspec archive $ARGUMENTS` and separated into top-level archive (`[Rule 18]`)
-   - `openspec/archive/$ARGUMENTS/specs/<domain>/spec.md` (Separated Archived Specification Audit Trail)
-   - `openspec/specs/<domain>/spec.md` (Merged Canonical Source of Truth)
+   - `openspec/archive/$ARGUMENTS/spec.md` (Separated Archived Specification Audit Trail — Flattened)
 
    ## Verification & Checklist
 

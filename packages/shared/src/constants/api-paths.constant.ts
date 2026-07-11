@@ -5,6 +5,8 @@ export const API_PATHS = {
     REGISTER: "/register",
     VERIFY_OTP: "/verify-otp",
     RESEND_OTP: "/resend-otp",
+    FORGOT_PASSWORD: "/forgot-password",
+    RESET_PASSWORD: "/reset-password",
     LOGIN: "/login",
     REFRESH: "/refresh",
     LOGOUT: "/logout",

@@ -1,9 +1,12 @@
+import crypto from "node:crypto";
 import bcrypt from "bcrypt";
 import request from "supertest";
 import { vi } from "vitest";
-import { API_PATHS } from "@shared/core/constants";
+import type { OtpStatus, OtpType } from "@prisma/client";
+import { API_PATHS, APP_LIMITS } from "@shared/core/constants";
 import app from "../../src/app.js";
 import { BCRYPT_ROUNDS } from "../../src/constants/api.constants.js";
+import { hashOtpCode } from "../../src/services/otp.service.js";
 import { prisma } from "./db.js";
 
 export { app };
@@ -14,6 +17,8 @@ export const ROUTES = {
   REGISTER: `${AUTH_BASE}${API_PATHS.AUTH.REGISTER}`,
   VERIFY_OTP: `${AUTH_BASE}${API_PATHS.AUTH.VERIFY_OTP}`,
   RESEND_OTP: `${AUTH_BASE}${API_PATHS.AUTH.RESEND_OTP}`,
+  FORGOT_PASSWORD: `${AUTH_BASE}${API_PATHS.AUTH.FORGOT_PASSWORD}`,
+  RESET_PASSWORD: `${AUTH_BASE}${API_PATHS.AUTH.RESET_PASSWORD}`,
   LOGIN: `${AUTH_BASE}${API_PATHS.AUTH.LOGIN}`,
   REFRESH: `${AUTH_BASE}${API_PATHS.AUTH.REFRESH}`,
   LOGOUT: `${AUTH_BASE}${API_PATHS.AUTH.LOGOUT}`,
@@ -167,4 +172,82 @@ export async function resendAndCaptureOtp(
   } finally {
     logSpy.mockRestore();
   }
+}
+
+/** Same idea as `resendAndCaptureOtp` but for the forgot-password endpoint (`AB-1003`).
+ * Because `forgotPassword` never throws and always returns the identical generic `200`
+ * regardless of branch, an empty `code` (no console log observed) is itself meaningful
+ * signal that the no-op/cooldown-blocked branch was taken rather than the OTP-issuing one. */
+export async function forgotPasswordAndCaptureOtp(
+  email: string,
+): Promise<{ code: string; status: number; body: Record<string, unknown> }> {
+  const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  try {
+    const res = await request(app).post(ROUTES.FORGOT_PASSWORD).send({ email });
+    const call = logSpy.mock.calls.find(
+      (args) => typeof args[0] === "string" && args[0].includes(email),
+    );
+    const match = call ? /-> (\d+)$/.exec(String(call[0])) : null;
+    return {
+      code: match ? match[1] : "",
+      status: res.status,
+      body: res.body as Record<string, unknown>,
+    };
+  } finally {
+    logSpy.mockRestore();
+  }
+}
+
+/** Directly seeds an `OtpCode` row (bypassing the HTTP layer entirely) so `reset-password`
+ * contract/concurrency suites can construct exact `status`/`attempts`/`expiresAt`/`createdAt`
+ * fixtures (e.g. `INVALIDATED`, `CONSUMED`, one-attempt-from-cap, expired-by-1ms) that would
+ * otherwise require many chained real requests to reach. Reuses the real `hashOtpCode` from
+ * `otp.service.ts` so the seeded row's `codeHash` verifies against `code` exactly the way a
+ * genuinely-issued OTP would. */
+export async function seedOtp(
+  userId: string,
+  code: string,
+  overrides: {
+    type?: OtpType;
+    status?: OtpStatus;
+    attempts?: number;
+    expiresAt?: Date;
+    createdAt?: Date;
+  } = {},
+): Promise<{ id: string }> {
+  const codeHash = await hashOtpCode(code);
+  const otp = await prisma.otpCode.create({
+    data: {
+      userId,
+      type: overrides.type ?? "PASSWORD_RESET",
+      codeHash,
+      status: overrides.status ?? "PENDING",
+      attempts: overrides.attempts ?? 0,
+      expiresAt:
+        overrides.expiresAt ??
+        new Date(Date.now() + APP_LIMITS.OTP_EXPIRY_MINUTES * 60_000),
+      ...(overrides.createdAt ? { createdAt: overrides.createdAt } : {}),
+    },
+  });
+  return { id: otp.id };
+}
+
+/** Directly seeds a `RefreshSession` row for a given `userId`/`userAgent` pair so
+ * `reset-password` (all-devices revocation) tests can prove multiple distinct-device
+ * sessions are affected, unlike login's single-device `revokeActiveSessionsForDevice`. */
+export async function seedRefreshSession(
+  userId: string,
+  userAgent: string,
+): Promise<{ id: string }> {
+  const session = await prisma.refreshSession.create({
+    data: {
+      userId,
+      tokenHash: crypto.randomUUID(),
+      userAgent,
+      expiresAt: new Date(
+        Date.now() + APP_LIMITS.REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+      ),
+    },
+  });
+  return { id: session.id };
 }

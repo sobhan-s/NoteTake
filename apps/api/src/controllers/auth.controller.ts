@@ -1,8 +1,10 @@
 import type { Request, Response } from "express";
 import {
+  forgotPasswordSchema,
   loginSchema,
   registerSchema,
   resendOtpSchema,
+  resetPasswordSchema,
   verifyOtpSchema,
 } from "@shared/core/schemas";
 import { APP_LIMITS } from "@shared/core/constants";
@@ -42,6 +44,24 @@ export async function verifyOtp(req: Request, res: Response): Promise<void> {
 export async function resendOtp(req: Request, res: Response): Promise<void> {
   const input = resendOtpSchema.parse(req.body);
   const data = await authService.resendOtp(input);
+  res.status(200).json({ success: true, data });
+}
+
+export async function forgotPassword(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const input = forgotPasswordSchema.parse(req.body);
+  const data = await authService.forgotPassword(input);
+  res.status(200).json({ success: true, data });
+}
+
+export async function resetPassword(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const input = resetPasswordSchema.parse(req.body);
+  const data = await authService.resetPassword(input);
   res.status(200).json({ success: true, data });
 }
 
