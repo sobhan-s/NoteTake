@@ -6,6 +6,7 @@ import { API_PATHS } from "@shared/core/constants";
 import router from "./routers/index.js";
 import { errorMiddleware } from "./middlewares/error.middleware.js";
 import { buildOpenApiDocument } from "./docs/openapi.js";
+import { startCleanupJob } from "./jobs/cleanup.job.js";
 
 const app: Express = express();
 
@@ -20,5 +21,7 @@ app.use(
 );
 
 app.use(errorMiddleware);
+
+startCleanupJob();
 
 export default app;
