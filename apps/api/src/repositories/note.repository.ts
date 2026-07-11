@@ -59,3 +59,71 @@ export function purgeStage2Notes(
     where: { deletedAt: { not: null, lt: stage2Cutoff } },
   });
 }
+
+function buildTagFilter(
+  tagIds: string[] | undefined,
+  tagMode: "ALL" | "ANY",
+): Prisma.NoteWhereInput {
+  if (!tagIds || tagIds.length === 0) return {};
+  return tagMode === "ALL"
+    ? { AND: tagIds.map((tagId) => ({ noteTags: { some: { tagId } } })) }
+    : { noteTags: { some: { tagId: { in: tagIds } } } };
+}
+
+type ListActiveNotesParams = {
+  userId: string;
+  page: number;
+  limit: number;
+  sort: "createdAt" | "updatedAt" | "title";
+  order: "asc" | "desc";
+  tagIds?: string[];
+  tagMode: "ALL" | "ANY";
+};
+
+export function listActiveNotesForUser(
+  params: ListActiveNotesParams,
+  db: Db = prisma,
+): Promise<Note[]> {
+  const { userId, page, limit, sort, order, tagIds, tagMode } = params;
+  return db.note.findMany({
+    where: { userId, deletedAt: null, ...buildTagFilter(tagIds, tagMode) },
+    orderBy: [{ [sort]: order }, { createdAt: "desc" }],
+    skip: (page - 1) * limit,
+    take: limit,
+  });
+}
+
+export function countActiveNotesForUser(
+  params: Pick<ListActiveNotesParams, "userId" | "tagIds" | "tagMode">,
+  db: Db = prisma,
+): Promise<number> {
+  const { userId, tagIds, tagMode } = params;
+  return db.note.count({
+    where: { userId, deletedAt: null, ...buildTagFilter(tagIds, tagMode) },
+  });
+}
+
+export function listTrashedNotesForUser(
+  params: { userId: string; page: number; limit: number; stage1Cutoff: Date },
+  db: Db = prisma,
+): Promise<Note[]> {
+  const { userId, page, limit, stage1Cutoff } = params;
+  return db.note.findMany({
+    where: { userId, deletedAt: { not: null, gte: stage1Cutoff } },
+    orderBy: { deletedAt: "desc" },
+    skip: (page - 1) * limit,
+    take: limit,
+  });
+}
+
+export function countTrashedNotesForUser(
+  params: { userId: string; stage1Cutoff: Date },
+  db: Db = prisma,
+): Promise<number> {
+  return db.note.count({
+    where: {
+      userId: params.userId,
+      deletedAt: { not: null, gte: params.stage1Cutoff },
+    },
+  });
+}

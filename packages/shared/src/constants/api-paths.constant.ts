@@ -14,6 +14,7 @@ export const API_PATHS = {
   },
   NOTES: {
     ROOT: "/notes",
+    TRASH: "/trash",
     RESTORE: "/restore",
     PERMANENT: "/permanent",
   },

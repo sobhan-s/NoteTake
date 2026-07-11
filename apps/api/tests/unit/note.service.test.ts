@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Note } from "@prisma/client";
-import { API_ERROR_CODES } from "@shared/core/constants";
+import { API_ERROR_CODES, APP_LIMITS } from "@shared/core/constants";
 import { AppError } from "../../src/errors/app-error.js";
 
 vi.mock("../../src/repositories/note.repository.js", () => ({
@@ -12,6 +12,10 @@ vi.mock("../../src/repositories/note.repository.js", () => ({
   restoreNote: vi.fn(),
   permanentlyDeleteNote: vi.fn(),
   purgeStage2Notes: vi.fn(),
+  listActiveNotesForUser: vi.fn(),
+  countActiveNotesForUser: vi.fn(),
+  listTrashedNotesForUser: vi.fn(),
+  countTrashedNotesForUser: vi.fn(),
 }));
 
 import * as noteRepository from "../../src/repositories/note.repository.js";
@@ -222,5 +226,203 @@ describe("[SDS §4.1] note.service — find-then-act repository call sequence", 
       code: API_ERROR_CODES.NOTE_NOT_FOUND,
     });
     expect(noteRepository.softDeleteNote).not.toHaveBeenCalled();
+  });
+});
+
+describe("[FRS-2.3.1] note.service.listNotes — pagination math (toPagination)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(noteRepository.listActiveNotesForUser).mockResolvedValue([]);
+  });
+
+  it("[FRS-2.3.1] SHALL compute totalPages as 0 (never NaN/Infinity) when total is 0", async () => {
+    vi.mocked(noteRepository.countActiveNotesForUser).mockResolvedValue(0);
+
+    const result = await noteService.listNotes(USER_ID, {
+      page: 1,
+      limit: 20,
+      sort: "updatedAt",
+      order: "desc",
+      tagMode: "ALL",
+    });
+
+    expect(result.pagination).toEqual({
+      page: 1,
+      limit: 20,
+      total: 0,
+      totalPages: 0,
+    });
+  });
+
+  it("[FRS-2.3.1] SHALL compute totalPages via exact division when total is an exact multiple of limit", async () => {
+    vi.mocked(noteRepository.countActiveNotesForUser).mockResolvedValue(40);
+
+    const result = await noteService.listNotes(USER_ID, {
+      page: 1,
+      limit: 20,
+      sort: "updatedAt",
+      order: "desc",
+      tagMode: "ALL",
+    });
+
+    expect(result.pagination.totalPages).toBe(2);
+  });
+
+  it("[FRS-2.3.1] SHALL round totalPages up (ceil) when total is one more than an exact multiple of limit", async () => {
+    vi.mocked(noteRepository.countActiveNotesForUser).mockResolvedValue(41);
+
+    const result = await noteService.listNotes(USER_ID, {
+      page: 1,
+      limit: 20,
+      sort: "updatedAt",
+      order: "desc",
+      tagMode: "ALL",
+    });
+
+    expect(result.pagination.totalPages).toBe(3);
+  });
+
+  it("[FRS-2.3.1] SHALL echo back the requested page/limit in the pagination envelope regardless of result-set size", async () => {
+    vi.mocked(noteRepository.countActiveNotesForUser).mockResolvedValue(5);
+
+    const result = await noteService.listNotes(USER_ID, {
+      page: 3,
+      limit: 7,
+      sort: "updatedAt",
+      order: "desc",
+      tagMode: "ALL",
+    });
+
+    expect(result.pagination.page).toBe(3);
+    expect(result.pagination.limit).toBe(7);
+  });
+});
+
+describe("[FRS-2.3.3] note.service.listNotes — tagIds CSV-to-array parsing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(noteRepository.listActiveNotesForUser).mockResolvedValue([]);
+    vi.mocked(noteRepository.countActiveNotesForUser).mockResolvedValue(0);
+  });
+
+  it("[FRS-2.3.3] SHALL split a comma-separated tagIds string into an array before calling the repository", async () => {
+    const tagA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const tagB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+    await noteService.listNotes(USER_ID, {
+      page: 1,
+      limit: 20,
+      sort: "updatedAt",
+      order: "desc",
+      tagIds: `${tagA},${tagB}`,
+      tagMode: "ALL",
+    });
+
+    expect(noteRepository.listActiveNotesForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ tagIds: [tagA, tagB], tagMode: "ALL" }),
+    );
+    expect(noteRepository.countActiveNotesForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ tagIds: [tagA, tagB], tagMode: "ALL" }),
+    );
+  });
+
+  it("[FRS-2.3.3] SHALL pass tagIds as undefined to the repository when the query omits it entirely", async () => {
+    await noteService.listNotes(USER_ID, {
+      page: 1,
+      limit: 20,
+      sort: "updatedAt",
+      order: "desc",
+      tagMode: "ALL",
+    });
+
+    expect(noteRepository.listActiveNotesForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ tagIds: undefined }),
+    );
+  });
+
+  it("[FRS-2.3.3] SHALL pass a single tagId as a one-element array (no split artifact) when tagIds has no comma", async () => {
+    const tagA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+    await noteService.listNotes(USER_ID, {
+      page: 1,
+      limit: 20,
+      sort: "updatedAt",
+      order: "desc",
+      tagIds: tagA,
+      tagMode: "ANY",
+    });
+
+    expect(noteRepository.listActiveNotesForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ tagIds: [tagA], tagMode: "ANY" }),
+    );
+  });
+});
+
+describe("[FRS-2.2.2, FRS-2.3.6] note.service.listTrash — stage1Cutoff arithmetic consistency with isWithinStage1", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(noteRepository.listTrashedNotesForUser).mockResolvedValue([]);
+    vi.mocked(noteRepository.countTrashedNotesForUser).mockResolvedValue(0);
+  });
+
+  it("[FRS-2.2.2, FRS-2.3.6] SHALL compute stage1Cutoff as now - APP_LIMITS.TRASH_STAGE_1_DAYS days, identical to the isWithinStage1 boundary formula", async () => {
+    vi.useFakeTimers();
+    const fixedNow = new Date("2026-07-11T12:00:00.000Z");
+    vi.setSystemTime(fixedNow);
+
+    try {
+      await noteService.listTrash(USER_ID, { page: 1, limit: 20 });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const expectedCutoff = new Date(
+      fixedNow.getTime() - APP_LIMITS.TRASH_STAGE_1_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    expect(noteRepository.listTrashedNotesForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ stage1Cutoff: expectedCutoff }),
+    );
+    expect(noteRepository.countTrashedNotesForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ stage1Cutoff: expectedCutoff }),
+    );
+  });
+
+  it("[FRS-2.2.2, FRS-2.3.6] SHALL pass the identical stage1Cutoff Date value to both the list and count repository calls in the same invocation", async () => {
+    let listCutoff: Date | undefined;
+    let countCutoff: Date | undefined;
+    vi.mocked(noteRepository.listTrashedNotesForUser).mockImplementation(
+      async (params) => {
+        listCutoff = params.stage1Cutoff;
+        return [];
+      },
+    );
+    vi.mocked(noteRepository.countTrashedNotesForUser).mockImplementation(
+      async (params) => {
+        countCutoff = params.stage1Cutoff;
+        return 0;
+      },
+    );
+
+    await noteService.listTrash(USER_ID, { page: 1, limit: 20 });
+
+    expect(listCutoff).toBeInstanceOf(Date);
+    expect(listCutoff?.getTime()).toBe(countCutoff?.getTime());
+  });
+
+  it("[FRS-2.3.6] SHALL echo back requested page/limit in the trash pagination envelope", async () => {
+    vi.mocked(noteRepository.countTrashedNotesForUser).mockResolvedValue(25);
+
+    const result = await noteService.listTrash(USER_ID, {
+      page: 2,
+      limit: 10,
+    });
+
+    expect(result.pagination).toEqual({
+      page: 2,
+      limit: 10,
+      total: 25,
+      totalPages: 3,
+    });
   });
 });

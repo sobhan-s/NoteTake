@@ -1,6 +1,8 @@
 import type { z } from "zod";
 import type {
   createNoteSchema,
+  listNotesSchema,
+  listTrashSchema,
   permanentDeleteSchema,
   updateNoteSchema,
 } from "../schemas/note.schema";
@@ -8,6 +10,8 @@ import type {
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type PermanentDeleteInput = z.infer<typeof permanentDeleteSchema>;
+export type ListNotesQuery = z.infer<typeof listNotesSchema>;
+export type ListTrashQuery = z.infer<typeof listTrashSchema>;
 
 export type NoteResponseDto = {
   id: string;
@@ -16,4 +20,14 @@ export type NoteResponseDto = {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PaginatedNotesResponseDto = {
+  notes: NoteResponseDto[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 };

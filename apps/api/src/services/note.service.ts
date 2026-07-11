@@ -2,7 +2,10 @@ import type { Note } from "@prisma/client";
 import { API_ERROR_CODES, APP_LIMITS } from "@shared/core/constants";
 import type {
   CreateNoteInput,
+  ListNotesQuery,
+  ListTrashQuery,
   NoteResponseDto,
+  PaginatedNotesResponseDto,
   UpdateNoteInput,
 } from "@shared/core/types";
 import { AppError } from "../errors/app-error.js";
@@ -27,6 +30,14 @@ function isWithinStage1(deletedAt: Date | null): boolean {
   if (!deletedAt) return false;
   const stage1CutoffMs = APP_LIMITS.TRASH_STAGE_1_DAYS * 24 * 60 * 60 * 1000;
   return Date.now() - deletedAt.getTime() < stage1CutoffMs;
+}
+
+function toPagination(
+  page: number,
+  limit: number,
+  total: number,
+): PaginatedNotesResponseDto["pagination"] {
+  return { page, limit, total, totalPages: Math.ceil(total / limit) || 0 };
 }
 
 export async function createNote(
@@ -104,4 +115,46 @@ export async function permanentDeleteNote(
   if (!trashed || !isWithinStage1(trashed.deletedAt)) notFound();
   await noteRepository.permanentlyDeleteNote(noteId);
   return { id: noteId };
+}
+
+export async function listNotes(
+  userId: string,
+  query: ListNotesQuery,
+): Promise<PaginatedNotesResponseDto> {
+  const tagIds = query.tagIds ? query.tagIds.split(",") : undefined;
+  const params = {
+    userId,
+    page: query.page,
+    limit: query.limit,
+    sort: query.sort,
+    order: query.order,
+    tagIds,
+    tagMode: query.tagMode,
+  };
+  const [notes, total] = await Promise.all([
+    noteRepository.listActiveNotesForUser(params),
+    noteRepository.countActiveNotesForUser(params),
+  ]);
+  return {
+    notes: notes.map(toNoteResponseDto),
+    pagination: toPagination(query.page, query.limit, total),
+  };
+}
+
+export async function listTrash(
+  userId: string,
+  query: ListTrashQuery,
+): Promise<PaginatedNotesResponseDto> {
+  const stage1Cutoff = new Date(
+    Date.now() - APP_LIMITS.TRASH_STAGE_1_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const params = { userId, page: query.page, limit: query.limit, stage1Cutoff };
+  const [notes, total] = await Promise.all([
+    noteRepository.listTrashedNotesForUser(params),
+    noteRepository.countTrashedNotesForUser(params),
+  ]);
+  return {
+    notes: notes.map(toNoteResponseDto),
+    pagination: toPagination(query.page, query.limit, total),
+  };
 }

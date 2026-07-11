@@ -1,6 +1,8 @@
 import type { Request, Response } from "express";
 import {
   createNoteSchema,
+  listNotesSchema,
+  listTrashSchema,
   permanentDeleteSchema,
   updateNoteSchema,
 } from "@shared/core/schemas";
@@ -55,5 +57,17 @@ export async function permanentDelete(
     req.user!.userId,
     req.params.id as string,
   );
+  res.status(200).json({ success: true, data });
+}
+
+export async function list(req: Request, res: Response): Promise<void> {
+  const query = listNotesSchema.parse(req.query);
+  const data = await noteService.listNotes(req.user!.userId, query);
+  res.status(200).json({ success: true, data });
+}
+
+export async function listTrash(req: Request, res: Response): Promise<void> {
+  const query = listTrashSchema.parse(req.query);
+  const data = await noteService.listTrash(req.user!.userId, query);
   res.status(200).json({ success: true, data });
 }
