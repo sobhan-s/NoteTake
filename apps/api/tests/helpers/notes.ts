@@ -1,4 +1,5 @@
-import type { Note } from "@prisma/client";
+import crypto from "node:crypto";
+import type { Note, Tag } from "@prisma/client";
 import { API_PATHS } from "@shared/core/constants";
 import { app, createVerifiedUser, loginTestUser } from "./auth.js";
 import { prisma } from "./db.js";
@@ -9,6 +10,7 @@ const NOTES_BASE = `${API_PATHS.BASE}${API_PATHS.NOTES.ROOT}`;
 
 export const ROUTES = {
   NOTES_ROOT: NOTES_BASE,
+  TRASH: `${NOTES_BASE}${API_PATHS.NOTES.TRASH}`,
   noteById: (id: string): string => `${NOTES_BASE}/${id}`,
   restore: (id: string): string =>
     `${NOTES_BASE}/${id}${API_PATHS.NOTES.RESTORE}`,
@@ -59,4 +61,24 @@ export async function createAuthedUser(
     throw new Error(`Failed to obtain access token for ${email}`);
   }
   return { userId, accessToken: login.accessToken };
+}
+
+/** Directly seeds a `Tag` row via Prisma (bypassing the HTTP layer entirely — the
+ * `Tag` create endpoint is AB-1006 and not yet shipped) so `tagIds`/`tagMode`
+ * filter suites can construct exact tag fixtures scoped to a given user. */
+export async function createTagDirect(
+  userId: string,
+  name = `Tag-${crypto.randomUUID()}`,
+): Promise<Tag> {
+  return prisma.tag.create({ data: { userId, name } });
+}
+
+/** Directly seeds a `NoteTag` join row via Prisma (bypassing the HTTP layer
+ * entirely — the tag-attachment endpoint is AB-1006 and not yet shipped) so
+ * `tagIds`/`tagMode` filter suites can construct exact many-to-many fixtures. */
+export async function attachTagDirect(
+  noteId: string,
+  tagId: string,
+): Promise<void> {
+  await prisma.noteTag.create({ data: { noteId, tagId } });
 }

@@ -45,3 +45,53 @@ export const updateNoteSchema = z
 export const permanentDeleteSchema = z.object({
   confirm: z.literal(true),
 });
+
+export const listNotesSchema = z.object({
+  page: z.coerce
+    .number()
+    .int()
+    .min(1, VALIDATION_MESSAGES.NOTE_PAGE_INVALID)
+    .default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, VALIDATION_MESSAGES.NOTE_LIMIT_INVALID)
+    .max(APP_LIMITS.PAGE_SIZE_MAX, VALIDATION_MESSAGES.NOTE_LIMIT_INVALID)
+    .default(APP_LIMITS.PAGE_SIZE_DEFAULT),
+  sort: z
+    .enum(["updatedAt", "createdAt", "title"], {
+      errorMap: () => ({
+        message: VALIDATION_MESSAGES.NOTE_SORT_FIELD_INVALID,
+      }),
+    })
+    .default("updatedAt"),
+  order: z.enum(["asc", "desc"]).default("desc"),
+  tagIds: z
+    .string()
+    .optional()
+    .refine(
+      (val) =>
+        val === undefined ||
+        val.split(",").every((id) => z.string().uuid().safeParse(id).success),
+      { message: VALIDATION_MESSAGES.NOTE_TAG_IDS_INVALID },
+    ),
+  tagMode: z
+    .enum(["ALL", "ANY"], {
+      errorMap: () => ({ message: VALIDATION_MESSAGES.NOTE_TAG_MODE_INVALID }),
+    })
+    .default("ALL"),
+});
+
+export const listTrashSchema = z.object({
+  page: z.coerce
+    .number()
+    .int()
+    .min(1, VALIDATION_MESSAGES.NOTE_PAGE_INVALID)
+    .default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, VALIDATION_MESSAGES.NOTE_LIMIT_INVALID)
+    .max(APP_LIMITS.PAGE_SIZE_MAX, VALIDATION_MESSAGES.NOTE_LIMIT_INVALID)
+    .default(APP_LIMITS.PAGE_SIZE_DEFAULT),
+});

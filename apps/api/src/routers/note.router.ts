@@ -8,6 +8,8 @@ const router: RouterType = Router();
 router.use(requireAuth);
 
 router.post("/", noteController.create);
+router.get(API_PATHS.NOTES.TRASH, noteController.listTrash);
+router.get("/", noteController.list);
 router.get("/:id", noteController.getById);
 router.patch("/:id", noteController.update);
 router.delete("/:id", noteController.softDelete);
