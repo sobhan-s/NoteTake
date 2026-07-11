@@ -18,4 +18,7 @@ export const API_PATHS = {
     RESTORE: "/restore",
     PERMANENT: "/permanent",
   },
+  TAGS: {
+    ROOT: "/tags",
+  },
 } as const;
