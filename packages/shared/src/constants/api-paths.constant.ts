@@ -12,4 +12,9 @@ export const API_PATHS = {
     LOGOUT: "/logout",
     ME: "/me",
   },
+  NOTES: {
+    ROOT: "/notes",
+    RESTORE: "/restore",
+    PERMANENT: "/permanent",
+  },
 } as const;
