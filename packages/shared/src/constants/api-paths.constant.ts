@@ -21,4 +21,7 @@ export const API_PATHS = {
   TAGS: {
     ROOT: "/tags",
   },
+  SEARCH: {
+    ROOT: "/search",
+  },
 } as const;
