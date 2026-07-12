@@ -1,3 +1,6 @@
 export * from "./api-response.type";
 export * from "./auth.type";
 export * from "./note.type";
+export * from "./tag.type";
+export * from "./search.type";
+export * from "./share.type";

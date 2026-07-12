@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Note } from "@prisma/client";
+import type { Note, NoteVersion } from "@prisma/client";
 import { API_ERROR_CODES, APP_LIMITS } from "@shared/core/constants";
 import { AppError } from "../../src/errors/app-error.js";
 
@@ -18,14 +18,35 @@ vi.mock("../../src/repositories/note.repository.js", () => ({
   countTrashedNotesForUser: vi.fn(),
 }));
 
+vi.mock("../../src/repositories/share.repository.js", () => ({
+  revokeActiveShareLinksForNote: vi.fn(),
+}));
+
+vi.mock("../../src/repositories/note-version.repository.js", () => ({
+  createVersion: vi.fn(),
+  findLatestVersionForNote: vi.fn(),
+}));
+
+vi.mock("../../src/lib/prisma-client.js", () => ({
+  prisma: { $transaction: vi.fn((cb) => cb({})) },
+}));
+
 import * as noteRepository from "../../src/repositories/note.repository.js";
+import * as shareRepository from "../../src/repositories/share.repository.js";
+import * as noteVersionRepository from "../../src/repositories/note-version.repository.js";
+import { prisma } from "../../src/lib/prisma-client.js";
 import * as noteService from "../../src/services/note.service.js";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const NOTE_ID = "22222222-2222-4222-8222-222222222222";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-function buildNote(overrides: Partial<Note> = {}): Note {
+type NoteWithShareLinks = Note & { shareLinks: { id: string }[] };
+
+function buildNote(
+  overrides: Partial<Note> & { shareLinks?: { id: string }[] } = {},
+): NoteWithShareLinks {
+  const { shareLinks = [], ...noteOverrides } = overrides;
   return {
     id: NOTE_ID,
     userId: USER_ID,
@@ -34,8 +55,20 @@ function buildNote(overrides: Partial<Note> = {}): Note {
     deletedAt: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...noteOverrides,
+    shareLinks,
+  } as unknown as NoteWithShareLinks;
+}
+
+function buildLatestVersion(overrides: Partial<NoteVersion> = {}): NoteVersion {
+  return {
+    id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+    noteId: NOTE_ID,
+    titleSnapshot: "Prior Snapshot Title",
+    bodySnapshot: "Prior Snapshot Body",
+    createdAt: new Date(),
     ...overrides,
-  } as unknown as Note;
+  } as unknown as NoteVersion;
 }
 
 describe("[FRS-2.2.2, FRS-2.2.5] note.service — Stage-1 boundary classification (isWithinStage1)", () => {
@@ -210,10 +243,14 @@ describe("[SDS §4.1] note.service — find-then-act repository call sequence", 
 
     await noteService.updateNote(USER_ID, NOTE_ID, { title: "New Title" });
 
-    expect(noteRepository.updateNoteContent).toHaveBeenCalledWith(NOTE_ID, {
-      title: "New Title",
-      body: undefined,
-    });
+    expect(noteRepository.updateNoteContent).toHaveBeenCalledWith(
+      NOTE_ID,
+      {
+        title: "New Title",
+        body: undefined,
+      },
+      expect.anything(),
+    );
   });
 
   it("[FRS-2.2.1] softDeleteNote SHALL call findActiveNoteByIdForUser before softDeleteNote(id), and SHALL NOT soft-delete when not found active", async () => {
@@ -424,5 +461,315 @@ describe("[FRS-2.2.2, FRS-2.3.6] note.service.listTrash — stage1Cutoff arithme
       total: 25,
       totalPages: 3,
     });
+  });
+});
+
+describe("[FRS-7.2] note.service — Share Status Visible on the Note DTO (hasActiveShareLink mapping)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("[FRS-7.2] getNoteById SHALL map hasActiveShareLink: true when the resolved note's shareLinks array is non-empty", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote({ shareLinks: [{ id: "share-1" }] }),
+    );
+
+    const result = await noteService.getNoteById(USER_ID, NOTE_ID);
+
+    expect(result.hasActiveShareLink).toBe(true);
+  });
+
+  it("[FRS-7.2] getNoteById SHALL map hasActiveShareLink: false when the resolved note's shareLinks array is empty", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote({ shareLinks: [] }),
+    );
+
+    const result = await noteService.getNoteById(USER_ID, NOTE_ID);
+
+    expect(result.hasActiveShareLink).toBe(false);
+  });
+
+  it("[FRS-7.2] updateNote SHALL reflect hasActiveShareLink based on the updated note's shareLinks, not the pre-update existing lookup", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote({ shareLinks: [] }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "New Title", shareLinks: [{ id: "share-2" }] }),
+    );
+
+    const result = await noteService.updateNote(USER_ID, NOTE_ID, {
+      title: "New Title",
+    });
+
+    expect(result.hasActiveShareLink).toBe(true);
+  });
+
+  it("[FRS-7.2] updateNote SHALL map hasActiveShareLink: false when the updated note's shareLinks array is empty even though the pre-update note had one", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote({ shareLinks: [{ id: "share-3" }] }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "New Title", shareLinks: [] }),
+    );
+
+    const result = await noteService.updateNote(USER_ID, NOTE_ID, {
+      title: "New Title",
+    });
+
+    expect(result.hasActiveShareLink).toBe(false);
+  });
+
+  it("[FRS-7.2] listNotes SHALL map hasActiveShareLink independently per-note across a mixed list", async () => {
+    vi.mocked(noteRepository.listActiveNotesForUser).mockResolvedValue([
+      buildNote({ id: "note-a", shareLinks: [{ id: "share-a" }] }),
+      buildNote({ id: "note-b", shareLinks: [] }),
+    ]);
+    vi.mocked(noteRepository.countActiveNotesForUser).mockResolvedValue(2);
+
+    const result = await noteService.listNotes(USER_ID, {
+      page: 1,
+      limit: 20,
+      sort: "updatedAt",
+      order: "desc",
+      tagMode: "ALL",
+    });
+
+    expect(result.notes[0]?.hasActiveShareLink).toBe(true);
+    expect(result.notes[1]?.hasActiveShareLink).toBe(false);
+  });
+
+  it("[FRS-7.2] listTrash SHALL map hasActiveShareLink independently per-note across a mixed list", async () => {
+    vi.mocked(noteRepository.listTrashedNotesForUser).mockResolvedValue([
+      buildNote({ id: "note-c", shareLinks: [] }),
+      buildNote({ id: "note-d", shareLinks: [{ id: "share-d" }] }),
+    ]);
+    vi.mocked(noteRepository.countTrashedNotesForUser).mockResolvedValue(2);
+
+    const result = await noteService.listTrash(USER_ID, {
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result.notes[0]?.hasActiveShareLink).toBe(false);
+    expect(result.notes[1]?.hasActiveShareLink).toBe(true);
+  });
+
+  it("[FRS-7.2, Resolved Decision #4] createNote SHALL always return hasActiveShareLink: false for a freshly created note without a repository round trip for share links", async () => {
+    const createdNote: Note = {
+      id: NOTE_ID,
+      userId: USER_ID,
+      title: "Brand New",
+      body: "Body",
+      deletedAt: null,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    } as unknown as Note;
+    vi.mocked(noteRepository.createNote).mockResolvedValue(createdNote);
+
+    const result = await noteService.createNote(USER_ID, {
+      title: "Brand New",
+      body: "Body",
+    });
+
+    expect(noteRepository.createNote).toHaveBeenCalledWith(
+      {
+        userId: USER_ID,
+        title: "Brand New",
+        body: "Body",
+      },
+      expect.anything(),
+    );
+    expect(result.hasActiveShareLink).toBe(false);
+  });
+});
+
+describe("[Resolved Decision #3, FRS-2.2.4] note.service.softDeleteNote — transactional share-link revocation on trash", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation((cb) => cb({}));
+  });
+
+  it("[Resolved Decision #3] softDeleteNote SHALL call both noteRepository.softDeleteNote and shareRepository.revokeActiveShareLinksForNote inside the transaction", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote({ shareLinks: [{ id: "share-x" }] }),
+    );
+    vi.mocked(noteRepository.softDeleteNote).mockResolvedValue(
+      buildNote({ deletedAt: new Date(), shareLinks: [] }),
+    );
+    vi.mocked(shareRepository.revokeActiveShareLinksForNote).mockResolvedValue({
+      count: 1,
+    });
+
+    const result = await noteService.softDeleteNote(USER_ID, NOTE_ID);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(noteRepository.softDeleteNote).toHaveBeenCalledWith(
+      NOTE_ID,
+      expect.anything(),
+    );
+    expect(shareRepository.revokeActiveShareLinksForNote).toHaveBeenCalledWith(
+      NOTE_ID,
+      expect.anything(),
+    );
+    expect(result.deletedAt).not.toBeNull();
+  });
+
+  it("[Resolved Decision #3] softDeleteNote SHALL still succeed and return the expected DTO when the note has no active share link to revoke", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote({ shareLinks: [] }),
+    );
+    vi.mocked(noteRepository.softDeleteNote).mockResolvedValue(
+      buildNote({ deletedAt: new Date(), shareLinks: [] }),
+    );
+    vi.mocked(shareRepository.revokeActiveShareLinksForNote).mockResolvedValue({
+      count: 0,
+    });
+
+    await expect(
+      noteService.softDeleteNote(USER_ID, NOTE_ID),
+    ).resolves.toMatchObject({ hasActiveShareLink: false });
+    expect(shareRepository.revokeActiveShareLinksForNote).toHaveBeenCalledWith(
+      NOTE_ID,
+      expect.anything(),
+    );
+  });
+
+  it("[FRS-2.2.1] softDeleteNote SHALL call findActiveNoteByIdForUser before entering the transaction, and SHALL NOT open a transaction when the note is not found active", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(null);
+
+    await expect(
+      noteService.softDeleteNote(USER_ID, NOTE_ID),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+      code: API_ERROR_CODES.NOTE_NOT_FOUND,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(noteRepository.softDeleteNote).not.toHaveBeenCalled();
+    expect(
+      shareRepository.revokeActiveShareLinksForNote,
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe("[FRS-6.1] note.service.updateNote — shouldSnapshot throttle-decision branching", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation((cb) => cb({}));
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote(),
+    );
+  });
+
+  it("[FRS-6.1] SHALL insert a new NoteVersion when isExplicitSave is true, bypassing the throttle window entirely without ever inspecting the latest snapshot's age", async () => {
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ body: "Explicit body" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      body: "Explicit body",
+      isExplicitSave: true,
+    });
+
+    expect(
+      noteVersionRepository.findLatestVersionForNote,
+    ).not.toHaveBeenCalled();
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledTimes(1);
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledWith(
+      {
+        noteId: NOTE_ID,
+        titleSnapshot: "Fixture Title",
+        bodySnapshot: "Explicit body",
+      },
+      expect.anything(),
+    );
+  });
+
+  it("[FRS-6.1] SHALL skip creating a NoteVersion when isExplicitSave is false and only 2 minutes have elapsed since the latest snapshot", async () => {
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      buildLatestVersion({ createdAt: new Date(Date.now() - 2 * 60 * 1000) }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ body: "Autosave body" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      body: "Autosave body",
+      isExplicitSave: false,
+    });
+
+    expect(noteVersionRepository.createVersion).not.toHaveBeenCalled();
+  });
+
+  it("[FRS-6.1] SHALL skip creating a NoteVersion at exactly APP_LIMITS.VERSION_SNAPSHOT_THROTTLE_MINUTES minutes minus 1 second since the latest snapshot", async () => {
+    const throttleMs = APP_LIMITS.VERSION_SNAPSHOT_THROTTLE_MINUTES * 60 * 1000;
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      buildLatestVersion({
+        createdAt: new Date(Date.now() - (throttleMs - 1000)),
+      }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(buildNote());
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      title: "Boundary minus",
+    });
+
+    expect(noteVersionRepository.createVersion).not.toHaveBeenCalled();
+  });
+
+  it("[FRS-6.1] SHALL create a new NoteVersion at exactly APP_LIMITS.VERSION_SNAPSHOT_THROTTLE_MINUTES minutes plus 1 second since the latest snapshot", async () => {
+    const throttleMs = APP_LIMITS.VERSION_SNAPSHOT_THROTTLE_MINUTES * 60 * 1000;
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      buildLatestVersion({
+        createdAt: new Date(Date.now() - (throttleMs + 1000)),
+      }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "Boundary plus" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      title: "Boundary plus",
+    });
+
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledTimes(1);
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledWith(
+      {
+        noteId: NOTE_ID,
+        titleSnapshot: "Boundary plus",
+        bodySnapshot: "Fixture Body",
+      },
+      expect.anything(),
+    );
+  });
+
+  it("[FRS-6.1] SHALL default isExplicitSave to false and follow the autosave throttle lookup path when the field is omitted from the update input entirely", async () => {
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      buildLatestVersion({ createdAt: new Date(Date.now() - 2 * 60 * 1000) }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "Omitted flag" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, { title: "Omitted flag" });
+
+    expect(
+      noteVersionRepository.findLatestVersionForNote,
+    ).toHaveBeenCalledTimes(1);
+    expect(noteVersionRepository.createVersion).not.toHaveBeenCalled();
+  });
+
+  it("[FRS-6.1] SHALL always create a NoteVersion when no prior version exists for the note, regardless of isExplicitSave", async () => {
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      null,
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "First ever snapshot" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      title: "First ever snapshot",
+    });
+
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledTimes(1);
   });
 });

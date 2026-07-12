@@ -17,5 +17,17 @@ export const API_PATHS = {
     TRASH: "/trash",
     RESTORE: "/restore",
     PERMANENT: "/permanent",
+    SHARE: "/share",
+    VERSIONS: "/versions",
+  },
+  TAGS: {
+    ROOT: "/tags",
+  },
+  SEARCH: {
+    ROOT: "/search",
+  },
+  PUBLIC: {
+    ROOT: "/public",
+    SHARE: "/share",
   },
 } as const;

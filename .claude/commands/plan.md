@@ -12,9 +12,9 @@ Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `
    - `docs/ux.md` (`Global Frontend UX & Visual Architecture` — strictly required for `AB-1010` to `AB-1016`)
    - `AGENTS.md` and workspace `CLAUDE.md` files (`apps/api/`, `apps/web/`, `packages/shared/`)
 2. Determine ticket scope by ID (`AB-1001 -> INFRA`, `AB-1002..AB-1009 -> BACKEND`, `AB-1010..AB-1015 -> FRONTEND`, `AB-1016 -> E2E`).
-3. **GRAPH ORIENTATION (`code-review-graph`)**:
-   - Run `query_graph` or `semantic_search_nodes` to identify reusable patterns, existing DTOs, and `@shared/core` utilities (~82x token savings over raw file reads).
-   - Run `get_architecture_overview` to confirm exact dependency graph across `routers -> controllers -> services -> repositories -> shared`.
+3. **GRAPH ORIENTATION & EFFICIENT LOOKUPS (`[Rule 12]`)**:
+   - Prioritize using `grep_search` and targeted `view_file` calls to identify reusable patterns, existing DTOs, and `@shared/core` utilities (`packages/shared`, `docs/SDS.md`).
+   - Only use `query_graph`, `semantic_search_nodes`, or `get_architecture_overview` if tracing complex cross-workspace dependencies across massive modules. Confirm exact dependency graph strictly follows `routers -> controllers -> services -> repositories -> shared`.
 
 ---
 
