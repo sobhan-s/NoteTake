@@ -1,5 +1,5 @@
-import { useNavigate } from "react-router-dom";
-import { FileText, LogOut, Trash2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { FileText, LogOut, Search, Trash2 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/Button";
@@ -7,12 +7,13 @@ import { cn } from "@/lib/cn";
 import type { NotesTab } from "@/components/notes/NotesTabs";
 
 export interface SidebarNavProps {
-  activeTab: NotesTab;
-  onTabChange: (tab: NotesTab) => void;
+  activeTab?: NotesTab;
+  onTabChange?: (tab: NotesTab) => void;
 }
 
 export function SidebarNav({ activeTab, onTabChange }: SidebarNavProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const reset = useAuthStore((state) => state.reset);
   const logoutMutation = useLogout();
@@ -26,6 +27,11 @@ export function SidebarNav({ activeTab, onTabChange }: SidebarNavProps) {
     });
   }
 
+  function handleTabNavigate(tab: NotesTab): void {
+    navigate("/notes");
+    onTabChange?.(tab);
+  }
+
   return (
     <div className="flex h-full w-full flex-col justify-between">
       <div className="flex flex-col gap-1">
@@ -34,10 +40,10 @@ export function SidebarNav({ activeTab, onTabChange }: SidebarNavProps) {
         </p>
         <button
           type="button"
-          onClick={() => onTabChange("active")}
+          onClick={() => handleTabNavigate("active")}
           className={cn(
             "flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium",
-            activeTab === "active"
+            location.pathname === "/notes" && activeTab === "active"
               ? "bg-zinc-900 text-zinc-50"
               : "text-zinc-700 hover:bg-zinc-100",
           )}
@@ -47,16 +53,29 @@ export function SidebarNav({ activeTab, onTabChange }: SidebarNavProps) {
         </button>
         <button
           type="button"
-          onClick={() => onTabChange("trash")}
+          onClick={() => handleTabNavigate("trash")}
           className={cn(
             "flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium",
-            activeTab === "trash"
+            location.pathname === "/notes" && activeTab === "trash"
               ? "bg-zinc-900 text-zinc-50"
               : "text-zinc-700 hover:bg-zinc-100",
           )}
         >
           <Trash2 className="h-4 w-4" aria-hidden="true" />
           Trash
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate("/search")}
+          className={cn(
+            "flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium",
+            location.pathname === "/search"
+              ? "bg-zinc-900 text-zinc-50"
+              : "text-zinc-700 hover:bg-zinc-100",
+          )}
+        >
+          <Search className="h-4 w-4" aria-hidden="true" />
+          Search
         </button>
       </div>
       <Button

@@ -21,7 +21,7 @@ export interface NoteCardProps {
   isDeletePending?: boolean;
 }
 
-function formatUpdatedAt(value: string): string {
+export function formatUpdatedAt(value: string): string {
   return new Date(value).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
