@@ -12,14 +12,32 @@ import { AppError } from "../errors/app-error.js";
 import { prisma } from "../lib/prisma-client.js";
 import * as noteVersionRepository from "../repositories/note-version.repository.js";
 import * as noteRepository from "../repositories/note.repository.js";
-import type { NoteWithShareLinks } from "../repositories/note.repository.js";
+import type { NoteWithRelations } from "../repositories/note.repository.js";
 import * as shareRepository from "../repositories/share.repository.js";
+import * as tagRepository from "../repositories/tag.repository.js";
+import { VALIDATION_MESSAGES } from "@shared/core/constants";
 
 function notFound(): never {
   throw new AppError(404, API_ERROR_CODES.NOTE_NOT_FOUND, "Note not found");
 }
 
-export function toNoteResponseDto(note: NoteWithShareLinks): NoteResponseDto {
+async function verifyTagOwnership(
+  tagIds: string[] | undefined,
+  userId: string,
+  tx: Prisma.TransactionClient,
+): Promise<void> {
+  if (tagIds === undefined) return;
+  const owned = await tagRepository.findTagsByIdsForUser(tagIds, userId, tx);
+  if (owned.length !== tagIds.length) {
+    throw new AppError(
+      403,
+      API_ERROR_CODES.TAG_NOT_FOUND,
+      VALIDATION_MESSAGES.NOTE_TAG_ATTACH_FORBIDDEN,
+    );
+  }
+}
+
+export function toNoteResponseDto(note: NoteWithRelations): NoteResponseDto {
   return {
     id: note.id,
     title: note.title,
@@ -28,6 +46,11 @@ export function toNoteResponseDto(note: NoteWithShareLinks): NoteResponseDto {
     createdAt: note.createdAt.toISOString(),
     updatedAt: note.updatedAt.toISOString(),
     hasActiveShareLink: note.shareLinks.length > 0,
+    tags: note.noteTags.map(({ tag }) => ({
+      id: tag.id,
+      name: tag.name,
+      color: tag.color,
+    })),
   };
 }
 
@@ -65,8 +88,9 @@ export async function createNote(
   input: CreateNoteInput,
 ): Promise<NoteResponseDto> {
   const note = await prisma.$transaction(async (tx) => {
+    await verifyTagOwnership(input.tagIds, userId, tx);
     const created = await noteRepository.createNote(
-      { userId, title: input.title, body: input.body },
+      { userId, title: input.title, body: input.body, tagIds: input.tagIds },
       tx,
     );
     await noteVersionRepository.createVersion(
@@ -79,7 +103,7 @@ export async function createNote(
     );
     return created;
   });
-  return toNoteResponseDto({ ...note, shareLinks: [] });
+  return toNoteResponseDto(note);
 }
 
 export async function getNoteById(
@@ -102,9 +126,10 @@ export async function updateNote(
   );
   if (!existing) notFound();
   const updated = await prisma.$transaction(async (tx) => {
+    await verifyTagOwnership(input.tagIds, userId, tx);
     const note = await noteRepository.updateNoteContent(
       noteId,
-      { title: input.title, body: input.body },
+      { title: input.title, body: input.body, tagIds: input.tagIds },
       tx,
     );
     if (await shouldSnapshot(noteId, input.isExplicitSave, tx)) {
