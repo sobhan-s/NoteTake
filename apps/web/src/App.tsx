@@ -1,3 +1,33 @@
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { RegisterPage } from "@/pages/RegisterPage";
+import { VerifyOtpPage } from "@/pages/VerifyOtpPage";
+import { LoginPage } from "@/pages/LoginPage";
+import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
+import { NotesStubPage } from "@/pages/NotesStubPage";
+
 export default function App() {
-  return <div>Note Taking App — scaffolding ready</div>;
+  return (
+    <BrowserRouter>
+      <Toaster position="top-right" richColors />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/verify-otp" element={<VerifyOtpPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route
+          path="/notes"
+          element={
+            <ProtectedRoute>
+              <NotesStubPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
