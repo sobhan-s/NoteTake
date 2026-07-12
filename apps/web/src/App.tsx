@@ -6,7 +6,8 @@ import { VerifyOtpPage } from "@/pages/VerifyOtpPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
-import { NotesStubPage } from "@/pages/NotesStubPage";
+import { NotesPage } from "@/pages/NotesPage";
+import { NoteDetailStubPage } from "@/pages/NoteDetailStubPage";
 
 export default function App() {
   return (
@@ -22,7 +23,15 @@ export default function App() {
           path="/notes"
           element={
             <ProtectedRoute>
-              <NotesStubPage />
+              <NotesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notes/:id"
+          element={
+            <ProtectedRoute>
+              <NoteDetailStubPage />
             </ProtectedRoute>
           }
         />
