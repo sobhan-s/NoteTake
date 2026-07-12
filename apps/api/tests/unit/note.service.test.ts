@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Note, NoteVersion } from "@prisma/client";
-import { API_ERROR_CODES, APP_LIMITS } from "@shared/core/constants";
+import {
+  API_ERROR_CODES,
+  APP_LIMITS,
+  VALIDATION_MESSAGES,
+} from "@shared/core/constants";
 import { AppError } from "../../src/errors/app-error.js";
 
 vi.mock("../../src/repositories/note.repository.js", () => ({
@@ -27,6 +31,10 @@ vi.mock("../../src/repositories/note-version.repository.js", () => ({
   findLatestVersionForNote: vi.fn(),
 }));
 
+vi.mock("../../src/repositories/tag.repository.js", () => ({
+  findTagsByIdsForUser: vi.fn(),
+}));
+
 vi.mock("../../src/lib/prisma-client.js", () => ({
   prisma: { $transaction: vi.fn((cb) => cb({})) },
 }));
@@ -34,19 +42,28 @@ vi.mock("../../src/lib/prisma-client.js", () => ({
 import * as noteRepository from "../../src/repositories/note.repository.js";
 import * as shareRepository from "../../src/repositories/share.repository.js";
 import * as noteVersionRepository from "../../src/repositories/note-version.repository.js";
+import * as tagRepository from "../../src/repositories/tag.repository.js";
 import { prisma } from "../../src/lib/prisma-client.js";
 import * as noteService from "../../src/services/note.service.js";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const NOTE_ID = "22222222-2222-4222-8222-222222222222";
+const TAG_A_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const TAG_B_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-type NoteWithShareLinks = Note & { shareLinks: { id: string }[] };
+type NoteWithRelations = Note & {
+  shareLinks: { id: string }[];
+  noteTags: { tag: { id: string; name: string; color: string } }[];
+};
 
 function buildNote(
-  overrides: Partial<Note> & { shareLinks?: { id: string }[] } = {},
-): NoteWithShareLinks {
-  const { shareLinks = [], ...noteOverrides } = overrides;
+  overrides: Partial<Note> & {
+    shareLinks?: { id: string }[];
+    noteTags?: { tag: { id: string; name: string; color: string } }[];
+  } = {},
+): NoteWithRelations {
+  const { shareLinks = [], noteTags = [], ...noteOverrides } = overrides;
   return {
     id: NOTE_ID,
     userId: USER_ID,
@@ -57,7 +74,8 @@ function buildNote(
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     ...noteOverrides,
     shareLinks,
-  } as unknown as NoteWithShareLinks;
+    noteTags,
+  } as unknown as NoteWithRelations;
 }
 
 function buildLatestVersion(overrides: Partial<NoteVersion> = {}): NoteVersion {
@@ -555,15 +573,12 @@ describe("[FRS-7.2] note.service — Share Status Visible on the Note DTO (hasAc
   });
 
   it("[FRS-7.2, Resolved Decision #4] createNote SHALL always return hasActiveShareLink: false for a freshly created note without a repository round trip for share links", async () => {
-    const createdNote: Note = {
-      id: NOTE_ID,
-      userId: USER_ID,
+    const createdNote = buildNote({
       title: "Brand New",
       body: "Body",
-      deletedAt: null,
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-    } as unknown as Note;
+      shareLinks: [],
+      noteTags: [],
+    });
     vi.mocked(noteRepository.createNote).mockResolvedValue(createdNote);
 
     const result = await noteService.createNote(USER_ID, {
@@ -771,5 +786,208 @@ describe("[FRS-6.1] note.service.updateNote — shouldSnapshot throttle-decision
     });
 
     expect(noteVersionRepository.createVersion).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("[FRS-3.1, FRS-3.4, SDS §4.1] note.service — verifyTagOwnership guard on createNote/updateNote", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation((cb) => cb({}));
+  });
+
+  it("[FRS-3.1] createNote SHALL NOT call findTagsByIdsForUser at all when input.tagIds is omitted, and SHALL still create the note", async () => {
+    vi.mocked(noteRepository.createNote).mockResolvedValue(
+      buildNote({ title: "No Tags Note" }),
+    );
+
+    await noteService.createNote(USER_ID, {
+      title: "No Tags Note",
+      body: "Body",
+    });
+
+    expect(tagRepository.findTagsByIdsForUser).not.toHaveBeenCalled();
+    expect(noteRepository.createNote).toHaveBeenCalledTimes(1);
+  });
+
+  it("[FRS-3.1] createNote SHALL call findTagsByIdsForUser(tagIds, userId) and proceed to create the note when every supplied tagId resolves to a tag owned by the caller", async () => {
+    vi.mocked(tagRepository.findTagsByIdsForUser).mockResolvedValue([
+      { id: TAG_A_ID } as never,
+      { id: TAG_B_ID } as never,
+    ]);
+    vi.mocked(noteRepository.createNote).mockResolvedValue(
+      buildNote({ title: "Tagged Note" }),
+    );
+
+    await noteService.createNote(USER_ID, {
+      title: "Tagged Note",
+      body: "Body",
+      tagIds: [TAG_A_ID, TAG_B_ID],
+    });
+
+    expect(tagRepository.findTagsByIdsForUser).toHaveBeenCalledWith(
+      [TAG_A_ID, TAG_B_ID],
+      USER_ID,
+      expect.anything(),
+    );
+    expect(noteRepository.createNote).toHaveBeenCalledWith(
+      {
+        userId: USER_ID,
+        title: "Tagged Note",
+        body: "Body",
+        tagIds: [TAG_A_ID, TAG_B_ID],
+      },
+      expect.anything(),
+    );
+  });
+
+  it("[FRS-3.4] createNote SHALL reject with 403 TAG_NOT_FOUND and SHALL NOT call repository createNote when findTagsByIdsForUser resolves fewer tags than requested (unauthorized or non-existent tagId)", async () => {
+    vi.mocked(tagRepository.findTagsByIdsForUser).mockResolvedValue([
+      { id: TAG_A_ID } as never,
+    ]);
+
+    await expect(
+      noteService.createNote(USER_ID, {
+        title: "Rejected Note",
+        body: "Body",
+        tagIds: [TAG_A_ID, TAG_B_ID],
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: API_ERROR_CODES.TAG_NOT_FOUND,
+      message: VALIDATION_MESSAGES.NOTE_TAG_ATTACH_FORBIDDEN,
+    });
+    expect(noteRepository.createNote).not.toHaveBeenCalled();
+  });
+
+  it("[SDS §4.1] createNote SHALL call findTagsByIdsForUser strictly before noteRepository.createNote, never the reverse order", async () => {
+    const callOrder: string[] = [];
+    vi.mocked(tagRepository.findTagsByIdsForUser).mockImplementation(
+      async () => {
+        callOrder.push("verifyTagOwnership");
+        return [{ id: TAG_A_ID } as never];
+      },
+    );
+    vi.mocked(noteRepository.createNote).mockImplementation(async () => {
+      callOrder.push("createNote");
+      return buildNote();
+    });
+
+    await noteService.createNote(USER_ID, {
+      title: "Order Note",
+      body: "Body",
+      tagIds: [TAG_A_ID],
+    });
+
+    expect(callOrder).toEqual(["verifyTagOwnership", "createNote"]);
+  });
+
+  it("[FRS-3.1] updateNote SHALL NOT call findTagsByIdsForUser when input.tagIds is omitted from a title/body-only update", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote(),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "Renamed" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, { title: "Renamed" });
+
+    expect(tagRepository.findTagsByIdsForUser).not.toHaveBeenCalled();
+  });
+
+  it("[FRS-3.4] updateNote SHALL reject with 403 TAG_NOT_FOUND and SHALL NOT call updateNoteContent (no partial title/body persistence) when a supplied tagId does not belong to the caller", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote(),
+    );
+    vi.mocked(tagRepository.findTagsByIdsForUser).mockResolvedValue([]);
+
+    await expect(
+      noteService.updateNote(USER_ID, NOTE_ID, {
+        title: "Should not persist",
+        tagIds: [TAG_A_ID],
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: API_ERROR_CODES.TAG_NOT_FOUND,
+    });
+    expect(noteRepository.updateNoteContent).not.toHaveBeenCalled();
+  });
+
+  it("[SDS §4.1] updateNote SHALL call findTagsByIdsForUser strictly before noteRepository.updateNoteContent, never the reverse order", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote(),
+    );
+    const callOrder: string[] = [];
+    vi.mocked(tagRepository.findTagsByIdsForUser).mockImplementation(
+      async () => {
+        callOrder.push("verifyTagOwnership");
+        return [{ id: TAG_A_ID } as never, { id: TAG_B_ID } as never];
+      },
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockImplementation(async () => {
+      callOrder.push("updateNoteContent");
+      return buildNote();
+    });
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      tagIds: [TAG_A_ID, TAG_B_ID],
+    });
+
+    expect(callOrder).toEqual(["verifyTagOwnership", "updateNoteContent"]);
+  });
+
+  it("[FRS-3.1] updateNote SHALL accept a tagIds-only payload (title and body both undefined) and forward tagIds to updateNoteContent unchanged", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote(),
+    );
+    vi.mocked(tagRepository.findTagsByIdsForUser).mockResolvedValue([
+      { id: TAG_A_ID } as never,
+    ]);
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({
+        noteTags: [{ tag: { id: TAG_A_ID, name: "Work", color: "#6B7280" } }],
+      }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, { tagIds: [TAG_A_ID] });
+
+    expect(noteRepository.updateNoteContent).toHaveBeenCalledWith(
+      NOTE_ID,
+      { title: undefined, body: undefined, tagIds: [TAG_A_ID] },
+      expect.anything(),
+    );
+  });
+});
+
+describe("[FRS-3.1] note.service.toNoteResponseDto — tags mapping from joined noteTags", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("[FRS-3.1] getNoteById SHALL map each joined noteTags row's nested tag to a flat { id, name, color } entry on the DTO's tags array", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote({
+        noteTags: [
+          { tag: { id: TAG_A_ID, name: "Work", color: "#3B82F6" } },
+          { tag: { id: TAG_B_ID, name: "Ideas", color: "#EF4444" } },
+        ],
+      }),
+    );
+
+    const result = await noteService.getNoteById(USER_ID, NOTE_ID);
+
+    expect(result.tags).toEqual([
+      { id: TAG_A_ID, name: "Work", color: "#3B82F6" },
+      { id: TAG_B_ID, name: "Ideas", color: "#EF4444" },
+    ]);
+  });
+
+  it("[FRS-3.1] getNoteById SHALL map to an empty tags array when the note has no NoteTag join rows", async () => {
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote({ noteTags: [] }),
+    );
+
+    const result = await noteService.getNoteById(USER_ID, NOTE_ID);
+
+    expect(result.tags).toEqual([]);
   });
 });

@@ -7,7 +7,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { NotesPage } from "@/pages/NotesPage";
-import { NoteDetailStubPage } from "@/pages/NoteDetailStubPage";
+import { NoteEditorPage } from "@/pages/NoteEditorPage";
 
 export default function App() {
   return (
@@ -31,7 +31,7 @@ export default function App() {
           path="/notes/:id"
           element={
             <ProtectedRoute>
-              <NoteDetailStubPage />
+              <NoteEditorPage />
             </ProtectedRoute>
           }
         />

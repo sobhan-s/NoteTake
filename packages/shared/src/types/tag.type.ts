@@ -16,3 +16,9 @@ export type TagResponseDto = {
 export type TagListResponseDto = {
   tags: TagResponseDto[];
 };
+
+export type TagSummaryDto = {
+  id: string;
+  name: string;
+  color: string;
+};

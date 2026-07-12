@@ -8,4 +8,7 @@ export const UI_COPY = {
     "Are you sure you want to restore this note to your active notes?",
   TRASH_RESTORE_SUCCESS: "Note restored.",
   PERMANENT_DELETE_SUCCESS: "Note permanently deleted.",
+  AUTOSAVE_SAVING: "Saving to cloud...",
+  AUTOSAVE_SAVED: "Saved",
+  AUTOSAVE_ERROR: "Save failed — Retrying...",
 } as const;

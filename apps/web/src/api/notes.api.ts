@@ -1,11 +1,13 @@
 import { API_PATHS } from "@shared/core/constants";
 import type {
   ApiSuccessResponse,
+  CreateNoteInput,
   ListNotesQuery,
   ListTrashQuery,
   NoteResponseDto,
   PaginatedNotesResponseDto,
   PermanentDeleteInput,
+  UpdateNoteInput,
 } from "@shared/core/types";
 import { httpClient } from "./httpClient";
 
@@ -32,6 +34,27 @@ export async function listTrash(
 export async function getNoteById(id: string): Promise<NoteResponseDto> {
   const response = await httpClient.get<ApiSuccessResponse<NoteResponseDto>>(
     `${NOTES_ROOT}/${id}`,
+  );
+  return response.data.data;
+}
+
+export async function createNote(
+  input: CreateNoteInput,
+): Promise<NoteResponseDto> {
+  const response = await httpClient.post<ApiSuccessResponse<NoteResponseDto>>(
+    NOTES_ROOT,
+    input,
+  );
+  return response.data.data;
+}
+
+export async function updateNote(
+  id: string,
+  input: UpdateNoteInput,
+): Promise<NoteResponseDto> {
+  const response = await httpClient.patch<ApiSuccessResponse<NoteResponseDto>>(
+    `${NOTES_ROOT}/${id}`,
+    input,
   );
   return response.data.data;
 }

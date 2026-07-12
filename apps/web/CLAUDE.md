@@ -50,4 +50,4 @@ Server State (Async/Remote)      Client UI State (Sync/Ephemeral)
 - **Primitives (`src/components/ui/`)**: All buttons, dialogs, inputs, sheets, toasts must be composed via `shadcn/ui` + Radix. Never write ad-hoc CSS modal wrappers.
 - **UX Rules (`docs/ux.md`)**: Skeleton loaders (`<Skeleton />`) during `isLoading === true`; clean empty cards (`EMPTY_NOTES_LIST`, `EMPTY_TRASH_BIN` from `UI_COPY`) when `items.length === 0`; mandatory confirmation dialogs (`TRASH_RESTORE_CONFIRM`, `PERMANENT_DELETE_CONFIRM` from `UI_COPY`) before destructive mutations (`TRASH_RESTORE_SUCCESS`, `PERMANENT_DELETE_SUCCESS` toasts).
 - **Search Debouncing (`useDebounce`)**: Debounce search input keystrokes (`300ms`) before updating TanStack Query param (`q`).
-- **Autosave (`useNoteAutosave`)**: Debounce editor changes (`1000ms` quiet window) before `PATCH /api/v1/notes/:id`. Show visual status (`Saving...`, `Saved at 10:42 AM`).
+- **Autosave (`useNoteAutosave`)**: Debounce editor changes (`1500ms` quiet window) before `PATCH /api/v1/notes/:id`. Show visual status (`Saving...`, `Saved at 10:42 AM`).

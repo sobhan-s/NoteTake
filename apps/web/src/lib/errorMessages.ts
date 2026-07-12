@@ -24,6 +24,8 @@ export function mapApiError(code?: string): string {
       return "Please check the highlighted fields and try again.";
     case API_ERROR_CODES.NOTE_NOT_FOUND:
       return "This note is no longer available.";
+    case API_ERROR_CODES.TAG_NOT_FOUND:
+      return "One or more tags could not be attached.";
     default:
       return GENERIC_ERROR_MESSAGE;
   }
