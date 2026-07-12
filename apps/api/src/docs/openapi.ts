@@ -16,6 +16,7 @@ import {
   registerSchema,
   resendOtpSchema,
   verifyOtpSchema,
+  createShareLinkSchema,
 } from "@shared/core/schemas";
 import { API_PATHS } from "@shared/core/constants";
 
@@ -41,6 +42,27 @@ const noteSchema = registry.register(
     body: z.string(),
     deletedAt: z.string().datetime().nullable(),
     createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    hasActiveShareLink: z.boolean(),
+  }),
+);
+
+const shareLinkSchema = registry.register(
+  "ShareLink",
+  z.object({
+    noteId: z.string().uuid(),
+    token: z.string(),
+    expiresAt: z.string().datetime(),
+    viewCount: z.number(),
+    createdAt: z.string().datetime(),
+  }),
+);
+
+const publicNoteSchema = registry.register(
+  "PublicNote",
+  z.object({
+    title: z.string(),
+    body: z.string(),
     updatedAt: z.string().datetime(),
   }),
 );
@@ -78,6 +100,7 @@ const authPath = API_PATHS.BASE + API_PATHS.AUTH.ROOT;
 const notesPath = API_PATHS.BASE + API_PATHS.NOTES.ROOT;
 const tagsPath = API_PATHS.BASE + API_PATHS.TAGS.ROOT;
 const searchPath = API_PATHS.BASE + API_PATHS.SEARCH.ROOT;
+const publicPath = API_PATHS.BASE + API_PATHS.PUBLIC.ROOT;
 
 registry.registerPath({
   method: "post",
@@ -389,6 +412,62 @@ registry.registerPath({
   },
 });
 
+// Sharing Endpoints
+registry.registerPath({
+  method: "post",
+  path: `${notesPath}/{id}${API_PATHS.NOTES.SHARE}`,
+  summary:
+    "Generate a share link for a note, or return the existing active one unchanged (idempotent get-or-create)",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: jsonBody(createShareLinkSchema),
+  },
+  responses: {
+    201: jsonResponse("New share link created", shareLinkSchema),
+    200: jsonResponse(
+      "Existing active share link returned unchanged",
+      shareLinkSchema,
+    ),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: `${notesPath}/{id}${API_PATHS.NOTES.SHARE}`,
+  summary: "Fetch the note's current active share link",
+  security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: jsonResponse("Active share link", shareLinkSchema),
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: `${notesPath}/{id}${API_PATHS.NOTES.SHARE}`,
+  summary: "Revoke the note's active share link",
+  security: [{ bearerAuth: [] }],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: jsonResponse(
+      "Share link revoked",
+      z.object({ noteId: z.string().uuid() }),
+    ),
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: `${publicPath}${API_PATHS.PUBLIC.SHARE}/{token}`,
+  summary:
+    "Public, unauthenticated read-only view of a shared note; atomically increments the link's view count",
+  request: { params: z.object({ token: z.string() }) },
+  responses: {
+    200: jsonResponse("Shared note view", publicNoteSchema),
+  },
+});
+
 registry.registerComponent("securitySchemes", "bearerAuth", {
   type: "http",
   scheme: "bearer",
@@ -402,6 +481,6 @@ export function buildOpenApiDocument(): ReturnType<
   return generator.generateDocument({
     openapi: "3.0.0",
     info: { title: "Notes App API", version: "1.0.0" },
-    servers: [{ url: API_PATHS.BASE }],
+    servers: [{ url: "/" }],
   });
 }

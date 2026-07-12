@@ -2,6 +2,7 @@ import { Router, type Router as RouterType } from "express";
 import { API_PATHS } from "@shared/core/constants";
 import * as noteController from "../controllers/note.controller.js";
 import { requireAuth } from "../middlewares/require-auth.middleware.js";
+import shareRouter from "./share.router.js";
 
 const router: RouterType = Router();
 
@@ -18,5 +19,6 @@ router.delete(
   `/:id${API_PATHS.NOTES.PERMANENT}`,
   noteController.permanentDelete,
 );
+router.use(`/:id${API_PATHS.NOTES.SHARE}`, shareRouter);
 
 export default router;

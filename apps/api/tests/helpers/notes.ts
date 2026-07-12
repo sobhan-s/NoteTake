@@ -1,12 +1,13 @@
 import crypto from "node:crypto";
-import type { Note, Tag } from "@prisma/client";
-import { API_PATHS } from "@shared/core/constants";
+import type { Note, ShareLink, Tag } from "@prisma/client";
+import { API_PATHS, APP_LIMITS } from "@shared/core/constants";
 import { app, createVerifiedUser, loginTestUser } from "./auth.js";
 import { prisma } from "./db.js";
 
 export { app };
 
 const NOTES_BASE = `${API_PATHS.BASE}${API_PATHS.NOTES.ROOT}`;
+const PUBLIC_BASE = `${API_PATHS.BASE}${API_PATHS.PUBLIC.ROOT}`;
 
 export const ROUTES = {
   NOTES_ROOT: NOTES_BASE,
@@ -16,7 +17,39 @@ export const ROUTES = {
     `${NOTES_BASE}/${id}${API_PATHS.NOTES.RESTORE}`,
   permanent: (id: string): string =>
     `${NOTES_BASE}/${id}${API_PATHS.NOTES.PERMANENT}`,
+  share: (id: string): string => `${NOTES_BASE}/${id}${API_PATHS.NOTES.SHARE}`,
+  publicShare: (token: string): string =>
+    `${PUBLIC_BASE}${API_PATHS.PUBLIC.SHARE}/${token}`,
 } as const;
+
+/** Directly seeds a `ShareLink` row via Prisma (bypassing the HTTP layer entirely)
+ * so `share`/`public-share` contract suites can construct exact fixtures — active,
+ * expired, revoked, or with a preset `viewCount` — that would otherwise require
+ * chained real requests plus manual clock manipulation to reach. */
+export async function createShareLinkDirect(
+  noteId: string,
+  overrides: {
+    token?: string;
+    expiresAt?: Date;
+    revokedAt?: Date | null;
+    viewCount?: number;
+  } = {},
+): Promise<ShareLink> {
+  return prisma.shareLink.create({
+    data: {
+      noteId,
+      token: overrides.token ?? crypto.randomBytes(32).toString("hex"),
+      expiresAt:
+        overrides.expiresAt ??
+        new Date(
+          Date.now() +
+            APP_LIMITS.SHARE_LINK_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+        ),
+      revokedAt: overrides.revokedAt ?? null,
+      viewCount: overrides.viewCount ?? 0,
+    },
+  });
+}
 
 /** Directly seeds a `Note` row via Prisma (bypassing the HTTP layer entirely) so
  * contract/unit suites can construct exact fixtures — active, Stage-1-trashed at any

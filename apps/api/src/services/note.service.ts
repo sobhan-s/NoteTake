@@ -1,4 +1,3 @@
-import type { Note } from "@prisma/client";
 import { API_ERROR_CODES, APP_LIMITS } from "@shared/core/constants";
 import type {
   CreateNoteInput,
@@ -9,13 +8,16 @@ import type {
   UpdateNoteInput,
 } from "@shared/core/types";
 import { AppError } from "../errors/app-error.js";
+import { prisma } from "../lib/prisma-client.js";
 import * as noteRepository from "../repositories/note.repository.js";
+import type { NoteWithShareLinks } from "../repositories/note.repository.js";
+import * as shareRepository from "../repositories/share.repository.js";
 
 function notFound(): never {
   throw new AppError(404, API_ERROR_CODES.NOTE_NOT_FOUND, "Note not found");
 }
 
-function toNoteResponseDto(note: Note): NoteResponseDto {
+function toNoteResponseDto(note: NoteWithShareLinks): NoteResponseDto {
   return {
     id: note.id,
     title: note.title,
@@ -23,6 +25,7 @@ function toNoteResponseDto(note: Note): NoteResponseDto {
     deletedAt: note.deletedAt?.toISOString() ?? null,
     createdAt: note.createdAt.toISOString(),
     updatedAt: note.updatedAt.toISOString(),
+    hasActiveShareLink: note.shareLinks.length > 0,
   };
 }
 
@@ -49,7 +52,7 @@ export async function createNote(
     title: input.title,
     body: input.body,
   });
-  return toNoteResponseDto(note);
+  return toNoteResponseDto({ ...note, shareLinks: [] });
 }
 
 export async function getNoteById(
@@ -87,7 +90,11 @@ export async function softDeleteNote(
     userId,
   );
   if (!existing) notFound();
-  const deleted = await noteRepository.softDeleteNote(noteId);
+  const deleted = await prisma.$transaction(async (tx) => {
+    const note = await noteRepository.softDeleteNote(noteId, tx);
+    await shareRepository.revokeActiveShareLinksForNote(noteId, tx);
+    return note;
+  });
   return toNoteResponseDto(deleted);
 }
 

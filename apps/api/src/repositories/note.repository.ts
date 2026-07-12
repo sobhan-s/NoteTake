@@ -3,6 +3,16 @@ import { prisma } from "../lib/prisma-client.js";
 
 type Db = Pick<Prisma.TransactionClient, "note">;
 
+export type NoteWithShareLinks = Note & { shareLinks: { id: string }[] };
+
+const ACTIVE_SHARE_LINK_INCLUDE = {
+  shareLinks: {
+    where: { revokedAt: null, expiresAt: { gt: new Date() } },
+    select: { id: true },
+    take: 1,
+  },
+} satisfies Prisma.NoteInclude;
+
 export function createNote(
   data: { userId: string; title: string; body: string },
   db: Db = prisma,
@@ -14,17 +24,21 @@ export function findActiveNoteByIdForUser(
   id: string,
   userId: string,
   db: Db = prisma,
-): Promise<Note | null> {
-  return db.note.findFirst({ where: { id, userId, deletedAt: null } });
+): Promise<NoteWithShareLinks | null> {
+  return db.note.findFirst({
+    where: { id, userId, deletedAt: null },
+    include: ACTIVE_SHARE_LINK_INCLUDE,
+  });
 }
 
 export function findTrashedNoteByIdForUser(
   id: string,
   userId: string,
   db: Db = prisma,
-): Promise<Note | null> {
+): Promise<NoteWithShareLinks | null> {
   return db.note.findFirst({
     where: { id, userId, deletedAt: { not: null } },
+    include: ACTIVE_SHARE_LINK_INCLUDE,
   });
 }
 
@@ -32,16 +46,34 @@ export function updateNoteContent(
   id: string,
   data: { title?: string; body?: string },
   db: Db = prisma,
-): Promise<Note> {
-  return db.note.update({ where: { id }, data });
+): Promise<NoteWithShareLinks> {
+  return db.note.update({
+    where: { id },
+    data,
+    include: ACTIVE_SHARE_LINK_INCLUDE,
+  });
 }
 
-export function softDeleteNote(id: string, db: Db = prisma): Promise<Note> {
-  return db.note.update({ where: { id }, data: { deletedAt: new Date() } });
+export function softDeleteNote(
+  id: string,
+  db: Db = prisma,
+): Promise<NoteWithShareLinks> {
+  return db.note.update({
+    where: { id },
+    data: { deletedAt: new Date() },
+    include: ACTIVE_SHARE_LINK_INCLUDE,
+  });
 }
 
-export function restoreNote(id: string, db: Db = prisma): Promise<Note> {
-  return db.note.update({ where: { id }, data: { deletedAt: null } });
+export function restoreNote(
+  id: string,
+  db: Db = prisma,
+): Promise<NoteWithShareLinks> {
+  return db.note.update({
+    where: { id },
+    data: { deletedAt: null },
+    include: ACTIVE_SHARE_LINK_INCLUDE,
+  });
 }
 
 export function permanentlyDeleteNote(
@@ -83,13 +115,14 @@ type ListActiveNotesParams = {
 export function listActiveNotesForUser(
   params: ListActiveNotesParams,
   db: Db = prisma,
-): Promise<Note[]> {
+): Promise<NoteWithShareLinks[]> {
   const { userId, page, limit, sort, order, tagIds, tagMode } = params;
   return db.note.findMany({
     where: { userId, deletedAt: null, ...buildTagFilter(tagIds, tagMode) },
     orderBy: [{ [sort]: order }, { createdAt: "desc" }],
     skip: (page - 1) * limit,
     take: limit,
+    include: ACTIVE_SHARE_LINK_INCLUDE,
   });
 }
 
@@ -106,13 +139,14 @@ export function countActiveNotesForUser(
 export function listTrashedNotesForUser(
   params: { userId: string; page: number; limit: number; stage1Cutoff: Date },
   db: Db = prisma,
-): Promise<Note[]> {
+): Promise<NoteWithShareLinks[]> {
   const { userId, page, limit, stage1Cutoff } = params;
   return db.note.findMany({
     where: { userId, deletedAt: { not: null, gte: stage1Cutoff } },
     orderBy: { deletedAt: "desc" },
     skip: (page - 1) * limit,
     take: limit,
+    include: ACTIVE_SHARE_LINK_INCLUDE,
   });
 }
 
