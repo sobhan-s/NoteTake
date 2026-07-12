@@ -91,7 +91,9 @@ export async function createAuthedUser(
   const { id: userId } = await createVerifiedUser(email);
   const login = await loginTestUser(email);
   if (!login.accessToken) {
-    throw new Error(`Failed to obtain access token for ${email}`);
+    throw new Error(
+      `Failed to obtain access token for ${email}: ${JSON.stringify(login.body)}`,
+    );
   }
   return { userId, accessToken: login.accessToken };
 }

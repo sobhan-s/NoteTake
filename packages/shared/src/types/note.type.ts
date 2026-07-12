@@ -6,6 +6,7 @@ import type {
   permanentDeleteSchema,
   updateNoteSchema,
 } from "../schemas/note.schema";
+import type { TagSummaryDto } from "./tag.type";
 
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
@@ -21,6 +22,7 @@ export type NoteResponseDto = {
   createdAt: string;
   updatedAt: string;
   hasActiveShareLink: boolean;
+  tags: TagSummaryDto[];
 };
 
 export type PaginatedNotesResponseDto = {

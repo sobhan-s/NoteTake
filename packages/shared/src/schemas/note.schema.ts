@@ -17,6 +17,7 @@ export const createNoteSchema = z.object({
       APP_LIMITS.NOTE_BODY_MAX_CHARS,
       VALIDATION_MESSAGES.NOTE_BODY_TOO_LONG,
     ),
+  tagIds: z.array(z.string().uuid()).optional(),
 });
 
 export const updateNoteSchema = z
@@ -37,11 +38,18 @@ export const updateNoteSchema = z
         VALIDATION_MESSAGES.NOTE_BODY_TOO_LONG,
       )
       .optional(),
+    tagIds: z.array(z.string().uuid()).optional(),
     isExplicitSave: z.boolean().default(false),
   })
-  .refine((data) => data.title !== undefined || data.body !== undefined, {
-    message: VALIDATION_MESSAGES.NOTE_UPDATE_EMPTY,
-  });
+  .refine(
+    (data) =>
+      data.title !== undefined ||
+      data.body !== undefined ||
+      data.tagIds !== undefined,
+    {
+      message: VALIDATION_MESSAGES.NOTE_UPDATE_EMPTY,
+    },
+  );
 
 export const permanentDeleteSchema = z.object({
   confirm: z.literal(true),

@@ -15,6 +15,14 @@ export function createTag(
   return db.tag.create({ data, include: withActiveNoteCount });
 }
 
+export function findTagsByIdsForUser(
+  ids: string[],
+  userId: string,
+  db: Db = prisma,
+): Promise<Tag[]> {
+  return db.tag.findMany({ where: { id: { in: ids }, userId } });
+}
+
 export function findTagByIdForUser(
   id: string,
   userId: string,

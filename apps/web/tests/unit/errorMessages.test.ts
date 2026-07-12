@@ -41,4 +41,10 @@ describe("mapApiError ([FRS-8.5, Centralized error mapping scenario])", () => {
       "Something went wrong. Please try again.",
     );
   });
+
+  it("[FRS-2.2.5] should map API_ERROR_CODES.NOTE_NOT_FOUND to 'This note is no longer available.' (Stage-2/purged note restore & permanent-delete 404 paths)", () => {
+    expect(mapApiError(API_ERROR_CODES.NOTE_NOT_FOUND)).toBe(
+      "This note is no longer available.",
+    );
+  });
 });
