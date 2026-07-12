@@ -32,3 +32,17 @@ export type PaginatedNotesResponseDto = {
     totalPages: number;
   };
 };
+
+export type NoteVersionSummaryDto = {
+  id: string;
+  titleSnapshot: string;
+  createdAt: string;
+};
+
+export type NoteVersionResponseDto = {
+  id: string;
+  noteId: string;
+  titleSnapshot: string;
+  bodySnapshot: string;
+  createdAt: string;
+};

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Note } from "@prisma/client";
+import type { Note, NoteVersion } from "@prisma/client";
 import { API_ERROR_CODES, APP_LIMITS } from "@shared/core/constants";
 import { AppError } from "../../src/errors/app-error.js";
 
@@ -22,12 +22,18 @@ vi.mock("../../src/repositories/share.repository.js", () => ({
   revokeActiveShareLinksForNote: vi.fn(),
 }));
 
+vi.mock("../../src/repositories/note-version.repository.js", () => ({
+  createVersion: vi.fn(),
+  findLatestVersionForNote: vi.fn(),
+}));
+
 vi.mock("../../src/lib/prisma-client.js", () => ({
   prisma: { $transaction: vi.fn((cb) => cb({})) },
 }));
 
 import * as noteRepository from "../../src/repositories/note.repository.js";
 import * as shareRepository from "../../src/repositories/share.repository.js";
+import * as noteVersionRepository from "../../src/repositories/note-version.repository.js";
 import { prisma } from "../../src/lib/prisma-client.js";
 import * as noteService from "../../src/services/note.service.js";
 
@@ -52,6 +58,17 @@ function buildNote(
     ...noteOverrides,
     shareLinks,
   } as unknown as NoteWithShareLinks;
+}
+
+function buildLatestVersion(overrides: Partial<NoteVersion> = {}): NoteVersion {
+  return {
+    id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+    noteId: NOTE_ID,
+    titleSnapshot: "Prior Snapshot Title",
+    bodySnapshot: "Prior Snapshot Body",
+    createdAt: new Date(),
+    ...overrides,
+  } as unknown as NoteVersion;
 }
 
 describe("[FRS-2.2.2, FRS-2.2.5] note.service — Stage-1 boundary classification (isWithinStage1)", () => {
@@ -226,10 +243,14 @@ describe("[SDS §4.1] note.service — find-then-act repository call sequence", 
 
     await noteService.updateNote(USER_ID, NOTE_ID, { title: "New Title" });
 
-    expect(noteRepository.updateNoteContent).toHaveBeenCalledWith(NOTE_ID, {
-      title: "New Title",
-      body: undefined,
-    });
+    expect(noteRepository.updateNoteContent).toHaveBeenCalledWith(
+      NOTE_ID,
+      {
+        title: "New Title",
+        body: undefined,
+      },
+      expect.anything(),
+    );
   });
 
   it("[FRS-2.2.1] softDeleteNote SHALL call findActiveNoteByIdForUser before softDeleteNote(id), and SHALL NOT soft-delete when not found active", async () => {
@@ -550,11 +571,14 @@ describe("[FRS-7.2] note.service — Share Status Visible on the Note DTO (hasAc
       body: "Body",
     });
 
-    expect(noteRepository.createNote).toHaveBeenCalledWith({
-      userId: USER_ID,
-      title: "Brand New",
-      body: "Body",
-    });
+    expect(noteRepository.createNote).toHaveBeenCalledWith(
+      {
+        userId: USER_ID,
+        title: "Brand New",
+        body: "Body",
+      },
+      expect.anything(),
+    );
     expect(result.hasActiveShareLink).toBe(false);
   });
 });
@@ -624,5 +648,128 @@ describe("[Resolved Decision #3, FRS-2.2.4] note.service.softDeleteNote — tran
     expect(
       shareRepository.revokeActiveShareLinksForNote,
     ).not.toHaveBeenCalled();
+  });
+});
+
+describe("[FRS-6.1] note.service.updateNote — shouldSnapshot throttle-decision branching", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation((cb) => cb({}));
+    vi.mocked(noteRepository.findActiveNoteByIdForUser).mockResolvedValue(
+      buildNote(),
+    );
+  });
+
+  it("[FRS-6.1] SHALL insert a new NoteVersion when isExplicitSave is true, bypassing the throttle window entirely without ever inspecting the latest snapshot's age", async () => {
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ body: "Explicit body" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      body: "Explicit body",
+      isExplicitSave: true,
+    });
+
+    expect(
+      noteVersionRepository.findLatestVersionForNote,
+    ).not.toHaveBeenCalled();
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledTimes(1);
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledWith(
+      {
+        noteId: NOTE_ID,
+        titleSnapshot: "Fixture Title",
+        bodySnapshot: "Explicit body",
+      },
+      expect.anything(),
+    );
+  });
+
+  it("[FRS-6.1] SHALL skip creating a NoteVersion when isExplicitSave is false and only 2 minutes have elapsed since the latest snapshot", async () => {
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      buildLatestVersion({ createdAt: new Date(Date.now() - 2 * 60 * 1000) }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ body: "Autosave body" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      body: "Autosave body",
+      isExplicitSave: false,
+    });
+
+    expect(noteVersionRepository.createVersion).not.toHaveBeenCalled();
+  });
+
+  it("[FRS-6.1] SHALL skip creating a NoteVersion at exactly APP_LIMITS.VERSION_SNAPSHOT_THROTTLE_MINUTES minutes minus 1 second since the latest snapshot", async () => {
+    const throttleMs = APP_LIMITS.VERSION_SNAPSHOT_THROTTLE_MINUTES * 60 * 1000;
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      buildLatestVersion({
+        createdAt: new Date(Date.now() - (throttleMs - 1000)),
+      }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(buildNote());
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      title: "Boundary minus",
+    });
+
+    expect(noteVersionRepository.createVersion).not.toHaveBeenCalled();
+  });
+
+  it("[FRS-6.1] SHALL create a new NoteVersion at exactly APP_LIMITS.VERSION_SNAPSHOT_THROTTLE_MINUTES minutes plus 1 second since the latest snapshot", async () => {
+    const throttleMs = APP_LIMITS.VERSION_SNAPSHOT_THROTTLE_MINUTES * 60 * 1000;
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      buildLatestVersion({
+        createdAt: new Date(Date.now() - (throttleMs + 1000)),
+      }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "Boundary plus" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      title: "Boundary plus",
+    });
+
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledTimes(1);
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledWith(
+      {
+        noteId: NOTE_ID,
+        titleSnapshot: "Boundary plus",
+        bodySnapshot: "Fixture Body",
+      },
+      expect.anything(),
+    );
+  });
+
+  it("[FRS-6.1] SHALL default isExplicitSave to false and follow the autosave throttle lookup path when the field is omitted from the update input entirely", async () => {
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      buildLatestVersion({ createdAt: new Date(Date.now() - 2 * 60 * 1000) }),
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "Omitted flag" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, { title: "Omitted flag" });
+
+    expect(
+      noteVersionRepository.findLatestVersionForNote,
+    ).toHaveBeenCalledTimes(1);
+    expect(noteVersionRepository.createVersion).not.toHaveBeenCalled();
+  });
+
+  it("[FRS-6.1] SHALL always create a NoteVersion when no prior version exists for the note, regardless of isExplicitSave", async () => {
+    vi.mocked(noteVersionRepository.findLatestVersionForNote).mockResolvedValue(
+      null,
+    );
+    vi.mocked(noteRepository.updateNoteContent).mockResolvedValue(
+      buildNote({ title: "First ever snapshot" }),
+    );
+
+    await noteService.updateNote(USER_ID, NOTE_ID, {
+      title: "First ever snapshot",
+    });
+
+    expect(noteVersionRepository.createVersion).toHaveBeenCalledTimes(1);
   });
 });
