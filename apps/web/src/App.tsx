@@ -8,6 +8,7 @@ import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { NotesPage } from "@/pages/NotesPage";
 import { NoteEditorPage } from "@/pages/NoteEditorPage";
+import { SearchPage } from "@/pages/SearchPage";
 
 export default function App() {
   return (
@@ -32,6 +33,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <NoteEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/search"
+          element={
+            <ProtectedRoute>
+              <SearchPage />
             </ProtectedRoute>
           }
         />

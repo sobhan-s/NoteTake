@@ -11,4 +11,6 @@ export const UI_COPY = {
   AUTOSAVE_SAVING: "Saving to cloud...",
   AUTOSAVE_SAVED: "Saved",
   AUTOSAVE_ERROR: "Save failed — Retrying...",
+  EMPTY_SEARCH_RESULTS:
+    "No notes matching query — try different keywords or search sentinels",
 } as const;
