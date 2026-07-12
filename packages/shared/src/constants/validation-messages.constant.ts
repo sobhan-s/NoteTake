@@ -20,4 +20,5 @@ export const VALIDATION_MESSAGES = {
   TAG_UPDATE_EMPTY: "At least one of name or color must be provided",
   TAG_NAME_CONFLICT: "A tag with this name already exists",
   SEARCH_QUERY_REQUIRED: "Search query is required",
+  SHARE_EXPIRY_DAYS_INVALID: `Expiry must be between ${APP_LIMITS.SHARE_LINK_MIN_EXPIRY_DAYS} and ${APP_LIMITS.SHARE_LINK_MAX_EXPIRY_DAYS} days`,
 } as const;

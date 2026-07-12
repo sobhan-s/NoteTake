@@ -20,6 +20,7 @@ export type NoteResponseDto = {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  hasActiveShareLink: boolean;
 };
 
 export type PaginatedNotesResponseDto = {
