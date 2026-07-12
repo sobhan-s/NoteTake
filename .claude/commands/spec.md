@@ -12,8 +12,8 @@ If `$ARGUMENTS` is only a bare ticket ID (like `AB-1001`), DO NOT create a bare 
    - `docs/ux.md` (`Global Frontend UX & Visual Architecture` — strictly required for `AB-1010` to `AB-1016`)
    - `AGENTS.md` and `openspec/project.md` (monorepo boundaries and stack constraints)
 2. Determine ticket scope by ID (`AB-1001 -> INFRA`, `AB-1002..AB-1009 -> BACKEND`, `AB-1010..AB-1015 -> FRONTEND`, `AB-1016 -> E2E`).
-3. **GRAPH ORIENTATION & EFFICIENT LOOKUPS (`[Rule 12]`)**:
-   - Prioritize using `grep_search` and targeted `view_file` calls to inspect existing domain specifications and `@shared/core` schemas (`packages/shared`, `docs/SDS.md`). Only use `query_graph` or `semantic_search_nodes` if tracing complex cross-workspace graph dependencies across massive modules.
+3. **GRAPH ORIENTATION (`code-review-graph`)**:
+   - Run `query_graph` or `semantic_search_nodes` to check existing domain specifications and `@shared/core` schemas (~82x token savings).
 
 ---
 

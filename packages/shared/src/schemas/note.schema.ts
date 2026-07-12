@@ -37,7 +37,6 @@ export const updateNoteSchema = z
         VALIDATION_MESSAGES.NOTE_BODY_TOO_LONG,
       )
       .optional(),
-    isExplicitSave: z.boolean().default(false),
   })
   .refine((data) => data.title !== undefined || data.body !== undefined, {
     message: VALIDATION_MESSAGES.NOTE_UPDATE_EMPTY,

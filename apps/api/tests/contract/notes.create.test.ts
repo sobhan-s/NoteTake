@@ -212,23 +212,4 @@ describe("[FRS-2.1.1, FRS-2.1.4] POST /api/v1/notes", () => {
     expect(createdMs).toBeLessThanOrEqual(after + 1000);
     expect(createdMs).toBe(updatedMs);
   });
-
-  it("[FRS-6.1, SDS route table] SHALL create exactly one NoteVersion row whose titleSnapshot/bodySnapshot match the created title/body", async () => {
-    const { accessToken } = await createAuthedUser(
-      "version-on-create@example.com",
-    );
-
-    const res = await request(app)
-      .post(ROUTES.NOTES_ROOT)
-      .set("Authorization", `Bearer ${accessToken}`)
-      .send({ title: "Versioned Note", body: "<p>Initial content</p>" });
-
-    expect(res.status).toBe(201);
-    const versions = await prisma.noteVersion.findMany({
-      where: { noteId: res.body.data.id },
-    });
-    expect(versions).toHaveLength(1);
-    expect(versions[0]?.titleSnapshot).toBe("Versioned Note");
-    expect(versions[0]?.bodySnapshot).toBe("<p>Initial content</p>");
-  });
 });

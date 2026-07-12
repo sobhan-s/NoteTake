@@ -13,8 +13,8 @@ Verify that `$ARGUMENTS` matches the exact descriptive change directory inside `
    - `docs/ux.md` (`Global Frontend UX & Visual Architecture` — strictly required for `AB-1010` to `AB-1016`)
 2. Determine ticket scope by ID (`AB-1001 -> INFRA`, `AB-1002..AB-1009 -> BACKEND`, `AB-1010..AB-1015 -> FRONTEND`, `AB-1016 -> E2E`).
 3. Ensure `.openspec/changes/$ARGUMENTS/review-log.md` and `fix-bundles.md` will be ready for the `/implement` orchestrator loop.
-4. **GRAPH ORIENTATION & EFFICIENT LOOKUPS (`[Rule 12]`)**:
-   - Prioritize using `grep_search` and targeted `view_file` calls to confirm exact file paths and layered boundaries (`routers -> controllers -> services -> repositories -> shared`) before writing task items. Only use `query_graph` or `get_architecture_overview` if analyzing large multi-workspace structures.
+4. **GRAPH ORIENTATION (`code-review-graph`)**:
+   - Run `query_graph` or `get_architecture_overview` to confirm exact file paths and dependencies across our layered architecture (`routers -> controllers -> services -> repositories -> shared`) before writing task items.
 
 ---
 

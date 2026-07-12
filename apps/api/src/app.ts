@@ -1,4 +1,3 @@
-import "dotenv/config";
 import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -24,15 +23,5 @@ app.use(
 app.use(errorMiddleware);
 
 startCleanupJob();
-
-if (process.env.NODE_ENV !== "test") {
-  const port = process.env.PORT || 3000;
-  app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
-    console.log(
-      `Swagger UI available at http://localhost:${port}${API_PATHS.BASE}/docs`,
-    );
-  });
-}
 
 export default app;

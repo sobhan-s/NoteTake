@@ -43,7 +43,6 @@ describe("[FRS-2.1.2] GET /api/v1/notes/:id", () => {
       deletedAt: null,
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
-      hasActiveShareLink: false,
     });
     expect(res.body.data).not.toHaveProperty("userId");
   });

@@ -138,7 +138,7 @@ Node.js **22 LTS** · Express **5** · TypeScript **5.x** · React **19** · Vit
 
 - `src/schemas/` — Zod schemas (auth, notes, tags, search, sharing) — canonical validation source for both client and server.
 - `src/types/` — inferred TS DTOs (`z.infer<typeof schema>`) — never hand-duplicated.
-- `src/constants/` — `API_PATHS` (`/api/v1` + route paths), `APP_LIMITS` (all FRS numeric constants: OTP timing/attempts, rate limits, token expiries, page sizes, trash/version retention, share expiry), `VALIDATION_MESSAGES`, `API_ERROR_CODES` (`OTP_EXPIRED`, `RATE_LIMIT_EXCEEDED`, `UNAUTHORIZED`, `NOTE_NOT_FOUND`, `NOTE_TRASHED`, `SHARE_LINK_EXPIRED`, ...), `UI_COPY` (confirmation prompts: `CONFIRM_TRASH_RESTORE`, `CONFIRM_PERMANENT_DELETE`, `CONFIRM_LOGOUT`; notes-list/trash copy added in `AB-1011`: `EMPTY_NOTES_LIST`, `EMPTY_TRASH_BIN`, `PERMANENT_DELETE_CONFIRM`, `TRASH_RESTORE_SUCCESS`, `PERMANENT_DELETE_SUCCESS`).
+- `src/constants/` — `API_PATHS` (`/api/v1` + route paths), `APP_LIMITS` (all FRS numeric constants: OTP timing/attempts, rate limits, token expiries, page sizes, trash/version retention, share expiry), `VALIDATION_MESSAGES`, `API_ERROR_CODES` (`OTP_EXPIRED`, `RATE_LIMIT_EXCEEDED`, `UNAUTHORIZED`, `NOTE_NOT_FOUND`, `NOTE_TRASHED`, `SHARE_LINK_EXPIRED`, ...), `UI_COPY` (confirmation prompts: `CONFIRM_TRASH_RESTORE`, `CONFIRM_PERMANENT_DELETE`, `CONFIRM_LOGOUT`).
 
 ## 13. OpenSpec Workflow & File Lifecycle Patterns
 
