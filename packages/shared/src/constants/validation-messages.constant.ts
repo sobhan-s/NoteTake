@@ -14,4 +14,9 @@ export const VALIDATION_MESSAGES = {
   NOTE_SORT_FIELD_INVALID: "Sort must be one of: createdAt, updatedAt, title",
   NOTE_TAG_MODE_INVALID: "Tag mode must be ALL or ANY",
   NOTE_TAG_IDS_INVALID: "Each tagIds entry must be a valid UUID",
+  TAG_NAME_REQUIRED: "Tag name is required",
+  TAG_NAME_TOO_LONG: `Tag name must be ${APP_LIMITS.TAG_NAME_MAX_CHARS} characters or fewer`,
+  TAG_COLOR_INVALID: "Color must be a valid hex code (e.g. #6B7280)",
+  TAG_UPDATE_EMPTY: "At least one of name or color must be provided",
+  TAG_NAME_CONFLICT: "A tag with this name already exists",
 } as const;
