@@ -16,6 +16,31 @@ vi.mock("sonner", () => ({
   },
 }));
 
+// `ShareModal` itself (fetching/generating/revoking/copying) is exercised in full by
+// apps/web/src/components/sharing/ShareModal.test.tsx; here it's stubbed so `NoteEditor`
+// tests exercise only the toolbar-button-to-modal wiring (props + mount condition).
+vi.mock("@/components/sharing/ShareModal", () => ({
+  ShareModal: ({
+    noteId,
+    open,
+    onOpenChange,
+  }: {
+    noteId: string;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  }) => (
+    <div
+      data-testid="share-modal-stub"
+      data-note-id={noteId}
+      data-open={String(open)}
+    >
+      <button type="button" onClick={() => onOpenChange(false)}>
+        Close Mock Modal
+      </button>
+    </div>
+  ),
+}));
+
 // Lightweight TipTap double: exposes just enough of the real `Editor`/`EditorContent`
 // surface (getHTML/getText/chain().run(), an onUpdate callback) for these component
 // tests, without requiring a real ProseMirror/contentEditable DOM under jsdom.
@@ -357,5 +382,52 @@ describe("NoteEditor ([Decision D4] new-note first-keystroke provisioning, [Deci
     const badge = screen.getByText("Urgent");
     expect(badge).toBeDefined();
     expect(screen.getByLabelText("Attached tags")).toBeDefined();
+  });
+
+  it("[Scenario: Share button on an existing (already-saved) note] the 'Share note' toolbar button SHALL be enabled (not aria-disabled) when noteId is a real id", async () => {
+    renderEditor({ noteId: "note-1", note: buildNote() });
+
+    const shareButton = screen.getByRole("button", {
+      name: "Share note",
+    }) as HTMLButtonElement;
+    expect(shareButton.disabled).toBe(false);
+    expect(shareButton.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("[Scenario: Share button on an unsaved new note] the 'Share note' toolbar button SHALL be disabled and aria-disabled when noteId is null, and ShareModal SHALL NOT be mounted", async () => {
+    renderEditor({ noteId: null });
+
+    const shareButton = screen.getByRole("button", {
+      name: "Share note",
+    }) as HTMLButtonElement;
+    expect(shareButton.disabled).toBe(true);
+    expect(shareButton.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByTestId("share-modal-stub")).toBeNull();
+  });
+
+  it("[Scenario: Share button on an existing (already-saved) note] clicking 'Share note' SHALL mount ShareModal open with the current noteId wired through", async () => {
+    renderEditor({ noteId: "note-1", note: buildNote() });
+
+    const shareButton = screen.getByRole("button", { name: "Share note" });
+    fireEvent.click(shareButton);
+
+    const modalStub = screen.getByTestId("share-modal-stub");
+    expect(modalStub.getAttribute("data-open")).toBe("true");
+    expect(modalStub.getAttribute("data-note-id")).toBe("note-1");
+  });
+
+  it("[Requirement: Share Toolbar Entry Point] ShareModal's onOpenChange callback SHALL close it (open becomes false) when invoked", async () => {
+    renderEditor({ noteId: "note-1", note: buildNote() });
+
+    fireEvent.click(screen.getByRole("button", { name: "Share note" }));
+    expect(
+      screen.getByTestId("share-modal-stub").getAttribute("data-open"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Mock Modal" }));
+
+    expect(
+      screen.getByTestId("share-modal-stub").getAttribute("data-open"),
+    ).toBe("false");
   });
 });

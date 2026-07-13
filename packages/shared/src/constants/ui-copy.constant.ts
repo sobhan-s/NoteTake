@@ -11,4 +11,11 @@ export const UI_COPY = {
   AUTOSAVE_SAVING: "Saving to cloud...",
   AUTOSAVE_SAVED: "Saved",
   AUTOSAVE_ERROR: "Save failed — Retrying...",
+  EMPTY_SEARCH_RESULTS:
+    "No notes matching query — try different keywords or search sentinels",
+  CONFIRM_REVOKE_SHARE_LINK:
+    "Anyone with the link will lose access immediately. Are you sure you want to revoke it?",
+  SHARE_LINK_REVOKED_SUCCESS: "Share link revoked.",
+  SHARE_LINK_COPIED_SUCCESS: "Link copied to clipboard.",
+  SHARE_LINK_UNAVAILABLE: "This link is no longer available.",
 } as const;
