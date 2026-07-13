@@ -1,4 +1,4 @@
-import { API_ERROR_CODES } from "@shared/core/constants";
+import { API_ERROR_CODES, UI_COPY } from "@shared/core/constants";
 
 const GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again.";
 
@@ -26,6 +26,10 @@ export function mapApiError(code?: string): string {
       return "This note is no longer available.";
     case API_ERROR_CODES.TAG_NOT_FOUND:
       return "One or more tags could not be attached.";
+    case API_ERROR_CODES.SHARE_LINK_NOT_FOUND:
+      return "No active share link found for this note.";
+    case API_ERROR_CODES.SHARE_LINK_UNAVAILABLE:
+      return UI_COPY.SHARE_LINK_UNAVAILABLE;
     default:
       return GENERIC_ERROR_MESSAGE;
   }

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { AutosaveIndicator } from "@/components/editor/AutosaveIndicator";
 import { TagCombobox } from "@/components/editor/TagCombobox";
+import { ShareModal } from "@/components/sharing/ShareModal";
 import { useNoteAutosave } from "@/hooks/useNoteAutosave";
 import { useTags } from "@/hooks/useTags";
 import { useUiStore } from "@/store/useUiStore";
@@ -27,6 +28,7 @@ export interface NoteEditorProps {
 }
 
 export function NoteEditor({ noteId, note, onCreated }: NoteEditorProps) {
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const draftKey = noteId ?? "new";
   const drafts = useUiStore((state) => state.drafts);
   const setDraft = useUiStore((state) => state.setDraft);
@@ -216,6 +218,17 @@ export function NoteEditor({ noteId, note, onCreated }: NoteEditorProps) {
         >
           <LinkIcon className="h-4 w-4" aria-hidden="true" />
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-8 min-w-0 px-2"
+          aria-label="Share note"
+          disabled={noteId === null}
+          aria-disabled={noteId === null}
+          onClick={() => setIsShareModalOpen(true)}
+        >
+          <Share2 className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
 
       <EditorContent
@@ -250,6 +263,14 @@ export function NoteEditor({ noteId, note, onCreated }: NoteEditorProps) {
         ) : null}
         <TagCombobox attachedTagIds={tagIds} onAttach={handleAttachTag} />
       </div>
+
+      {noteId !== null ? (
+        <ShareModal
+          noteId={noteId}
+          open={isShareModalOpen}
+          onOpenChange={setIsShareModalOpen}
+        />
+      ) : null}
     </div>
   );
 }
