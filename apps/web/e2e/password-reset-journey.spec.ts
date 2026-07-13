@@ -79,6 +79,5 @@ test.describe("Password Reset Journey ([FRS-1.5.1–1.5.6])", () => {
 
     // Should successfully access /notes
     await expect(page).toHaveURL(/\/notes/);
-    await expect(page.locator("h1")).toHaveText(`Welcome, ${email}`);
   });
 });

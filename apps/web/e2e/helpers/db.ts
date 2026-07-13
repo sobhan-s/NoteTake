@@ -55,3 +55,42 @@ export async function setTestOtpCodeHash(
   });
   return knownCode;
 }
+
+export async function backdateNoteDeletedAt(
+  noteId: string,
+  daysAgo: number,
+): Promise<void> {
+  assertTestDatabaseGuard();
+  const deletedAt = new Date();
+  deletedAt.setDate(deletedAt.getDate() - daysAgo);
+  await prisma.note.update({ where: { id: noteId }, data: { deletedAt } });
+}
+
+// Caller must never pass the row with the greatest `createdAt` for a given
+// `noteId` — there is no `isCurrent` column, so that row is the implicit
+// "live version" and is exempt from purge regardless of age (FRS-6.5).
+export async function backdateNoteVersionCreatedAt(
+  versionId: string,
+  daysAgo: number,
+): Promise<void> {
+  assertTestDatabaseGuard();
+  const createdAt = new Date();
+  createdAt.setDate(createdAt.getDate() - daysAgo);
+  await prisma.noteVersion.update({
+    where: { id: versionId },
+    data: { createdAt },
+  });
+}
+
+export async function backdateShareLinkExpiry(
+  shareLinkId: string,
+  daysAgo: number,
+): Promise<void> {
+  assertTestDatabaseGuard();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() - daysAgo);
+  await prisma.shareLink.update({
+    where: { id: shareLinkId },
+    data: { expiresAt },
+  });
+}
