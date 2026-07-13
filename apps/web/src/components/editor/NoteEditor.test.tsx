@@ -41,9 +41,59 @@ vi.mock("@/components/sharing/ShareModal", () => ({
   ),
 }));
 
+// `VersionHistoryDrawer` itself (list/preview/confirm/restore flow) is exercised in full by
+// apps/web/src/components/versions/VersionHistoryDrawer.test.tsx; here it's stubbed so
+// `NoteEditor` tests exercise only the toolbar-button-to-drawer wiring (props + mount
+// condition) and the `onRestored` callback's effect on NoteEditor's own local state.
+vi.mock("@/components/versions/VersionHistoryDrawer", () => ({
+  VersionHistoryDrawer: ({
+    noteId,
+    open,
+    onOpenChange,
+    onRestored,
+  }: {
+    noteId: string;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onRestored: (restoredNote: NoteResponseDto) => void;
+  }) => (
+    <div
+      data-testid="version-history-drawer-stub"
+      data-note-id={noteId}
+      data-open={String(open)}
+    >
+      <button type="button" onClick={() => onOpenChange(false)}>
+        Close Mock Drawer
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onRestored({
+            id: noteId,
+            title: "Restored Title From Version",
+            body: "<p>Restored body from version</p>",
+            deletedAt: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-05T00:00:00.000Z",
+            hasActiveShareLink: false,
+            tags: [
+              { id: "tag-restored", name: "Restored Tag", color: "#123456" },
+            ],
+          })
+        }
+      >
+        Trigger Mock Restore
+      </button>
+    </div>
+  ),
+}));
+
 // Lightweight TipTap double: exposes just enough of the real `Editor`/`EditorContent`
-// surface (getHTML/getText/chain().run(), an onUpdate callback) for these component
-// tests, without requiring a real ProseMirror/contentEditable DOM under jsdom.
+// surface (getHTML/getText/chain().run(), commands.setContent, an onUpdate callback) for
+// these component tests, without requiring a real ProseMirror/contentEditable DOM under
+// jsdom. `commands.setContent` mirrors the restore flow's direct-content-set requirement
+// (Requirement: Confirmed Restore Applies the Server's Authoritative Content) without
+// itself firing `onUpdate` (matching TipTap's non-emitting `setContent` default).
 vi.mock("@tiptap/react", () => ({
   useEditor: (options: {
     content?: string;
@@ -53,6 +103,7 @@ vi.mock("@tiptap/react", () => ({
       getHTML: () => string;
       getText: () => string;
       chain: () => Record<string, () => unknown>;
+      commands: { setContent: (next: string) => void };
       __setHtml: (next: string) => void;
     } | null>(null);
     if (!ref.current) {
@@ -69,6 +120,11 @@ vi.mock("@tiptap/react", () => ({
         getHTML: () => html,
         getText: () => html.replace(/<[^>]*>/g, ""),
         chain,
+        commands: {
+          setContent: (next: string) => {
+            html = next;
+          },
+        },
         __setHtml: (next: string) => {
           html = next;
           options.onUpdate?.({ editor: ref.current });
@@ -429,5 +485,104 @@ describe("NoteEditor ([Decision D4] new-note first-keystroke provisioning, [Deci
     expect(
       screen.getByTestId("share-modal-stub").getAttribute("data-open"),
     ).toBe("false");
+  });
+
+  it("[Scenario: Version History button on an unsaved new note] the 'Version history' toolbar button SHALL be disabled and aria-disabled when noteId is null, with no click handler firing and VersionHistoryDrawer NOT mounted", async () => {
+    renderEditor({ noteId: null });
+
+    const versionHistoryButton = screen.getByRole("button", {
+      name: "Version history",
+    }) as HTMLButtonElement;
+    expect(versionHistoryButton.disabled).toBe(true);
+    expect(versionHistoryButton.getAttribute("aria-disabled")).toBe("true");
+
+    fireEvent.click(versionHistoryButton);
+    expect(screen.queryByTestId("version-history-drawer-stub")).toBeNull();
+  });
+
+  it("[Scenario: Version History button on an existing (already-saved) note] the 'Version history' toolbar button SHALL be enabled (not aria-disabled), and clicking it SHALL mount VersionHistoryDrawer open with the current noteId wired through", async () => {
+    renderEditor({ noteId: "note-1", note: buildNote() });
+
+    const versionHistoryButton = screen.getByRole("button", {
+      name: "Version history",
+    }) as HTMLButtonElement;
+    expect(versionHistoryButton.disabled).toBe(false);
+    expect(versionHistoryButton.getAttribute("aria-disabled")).toBe("false");
+    expect(
+      screen
+        .getByTestId("version-history-drawer-stub")
+        .getAttribute("data-open"),
+    ).toBe("false");
+
+    fireEvent.click(versionHistoryButton);
+
+    const drawerStub = screen.getByTestId("version-history-drawer-stub");
+    expect(drawerStub.getAttribute("data-open")).toBe("true");
+    expect(drawerStub.getAttribute("data-note-id")).toBe("note-1");
+  });
+
+  it("[Requirement: Version History Toolbar Entry Point] VersionHistoryDrawer's onOpenChange callback SHALL close it (open becomes false) when invoked", async () => {
+    renderEditor({ noteId: "note-1", note: buildNote() });
+
+    fireEvent.click(screen.getByRole("button", { name: "Version history" }));
+    expect(
+      screen
+        .getByTestId("version-history-drawer-stub")
+        .getAttribute("data-open"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Mock Drawer" }));
+
+    expect(
+      screen
+        .getByTestId("version-history-drawer-stub")
+        .getAttribute("data-open"),
+    ).toBe("false");
+  });
+
+  it("[Requirement: Confirmed Restore Applies the Server's Authoritative Content and Closes the Drawer] VersionHistoryDrawer's onRestored callback SHALL apply the restored title/body/tags to editor state and clear the Zustand draft for this note", async () => {
+    vi.spyOn(tagsApi, "listTags").mockResolvedValue({
+      tags: [
+        {
+          id: "tag-restored",
+          name: "Restored Tag",
+          color: "#123456",
+          noteCount: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    useUiStore.getState().setDraft("note-1", {
+      title: "Unsaved Draft Title",
+      body: "<p>Unsaved draft body</p>",
+      savedAt: Date.now(),
+    });
+
+    renderEditor({
+      noteId: "note-1",
+      note: buildNote({ title: "Old Title", body: "<p>Old body</p>" }),
+    });
+
+    // Let the real `useTags` query resolve (mirrors the [FRS-3.1] Fly Tag attach test's own
+    // `vi.advanceTimersByTimeAsync(0)` flush pattern) so `allTags` is populated before the
+    // restored tagIds are applied, since `NoteEditor` derives attached-tag badges from
+    // `tagsData ?? note?.tags`.
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useUiStore.getState().drafts["note-1"]).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Version history" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Trigger Mock Restore" }),
+    );
+
+    const titleInput = screen.getByLabelText("Note title") as HTMLInputElement;
+    const body = screen.getByLabelText("Note body") as HTMLTextAreaElement;
+
+    expect(titleInput.value).toBe("Restored Title From Version");
+    expect(body.value).toBe("<p>Restored body from version</p>");
+    expect(screen.getByText("Restored Tag")).toBeDefined();
+    expect(useUiStore.getState().drafts["note-1"]).toBeUndefined();
   });
 });

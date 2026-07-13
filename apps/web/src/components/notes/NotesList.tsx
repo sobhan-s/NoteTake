@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { NoteCard } from "@/components/notes/NoteCard";
+import { useDeleteNote } from "@/hooks/useDeleteNote";
 import { useRestoreNote } from "@/hooks/useRestoreNote";
 import { usePermanentDeleteNote } from "@/hooks/usePermanentDeleteNote";
 
@@ -26,8 +27,11 @@ export function NotesList({
   isFiltered,
   onCreateNote,
 }: NotesListProps) {
+  const deleteNoteMutation = useDeleteNote();
   const restoreNoteMutation = useRestoreNote();
   const permanentDeleteMutation = usePermanentDeleteNote();
+  const [pendingTrashNote, setPendingTrashNote] =
+    useState<NoteResponseDto | null>(null);
   const [pendingDeleteNote, setPendingDeleteNote] =
     useState<NoteResponseDto | null>(null);
   const [pendingRestoreNote, setPendingRestoreNote] =
@@ -90,17 +94,38 @@ export function NotesList({
             onDeleteForever={
               variant === "trash" ? () => setPendingDeleteNote(note) : undefined
             }
+            onDelete={
+              variant === "active" ? () => setPendingTrashNote(note) : undefined
+            }
             isRestorePending={
               restoreNoteMutation.isPending &&
               restoreNoteMutation.variables === note.id
             }
             isDeletePending={
-              permanentDeleteMutation.isPending &&
-              permanentDeleteMutation.variables?.id === note.id
+              (permanentDeleteMutation.isPending &&
+                permanentDeleteMutation.variables?.id === note.id) ||
+              (deleteNoteMutation.isPending &&
+                deleteNoteMutation.variables === note.id)
             }
           />
         ))}
       </div>
+      <ConfirmModal
+        open={pendingTrashNote !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingTrashNote(null);
+        }}
+        heading="Move Note to Trash"
+        body={UI_COPY.NOTE_TRASHED_CONFIRM}
+        confirmLabel="Move to Trash"
+        isConfirming={deleteNoteMutation.isPending}
+        onConfirm={() => {
+          if (!pendingTrashNote) return;
+          deleteNoteMutation.mutate(pendingTrashNote.id, {
+            onSettled: () => setPendingTrashNote(null),
+          });
+        }}
+      />
       <ConfirmModal
         open={pendingRestoreNote !== null}
         onOpenChange={(open) => {

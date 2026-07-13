@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { FileText, LogOut, Search, Trash2 } from "lucide-react";
+import { FileText, LogOut, Plus, Search, Trash2 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/Button";
@@ -35,9 +35,16 @@ export function SidebarNav({ activeTab, onTabChange }: SidebarNavProps) {
   return (
     <div className="flex h-full w-full flex-col justify-between">
       <div className="flex flex-col gap-1">
-        <p className="mb-4 truncate px-2 text-sm font-medium text-zinc-500">
+        <p className="mb-2 truncate px-2 text-sm font-medium text-zinc-500">
           {user?.email}
         </p>
+        <Button
+          onClick={() => navigate("/notes/new")}
+          className="mb-3 w-full justify-start gap-2 font-medium"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          New Note
+        </Button>
         <button
           type="button"
           onClick={() => handleTabNavigate("active")}

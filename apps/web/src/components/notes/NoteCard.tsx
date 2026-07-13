@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Share2 } from "lucide-react";
+import { Share2, Trash2 } from "lucide-react";
 import type { NoteResponseDto } from "@shared/core/types";
 import {
   Card,
@@ -17,6 +17,7 @@ export interface NoteCardProps {
   variant: "active" | "trash";
   onRestore?: () => void;
   onDeleteForever?: () => void;
+  onDelete?: () => void;
   isRestorePending?: boolean;
   isDeletePending?: boolean;
 }
@@ -33,6 +34,7 @@ export function NoteCard({
   variant,
   onRestore,
   onDeleteForever,
+  onDelete,
   isRestorePending = false,
   isDeletePending = false,
 }: NoteCardProps) {
@@ -58,10 +60,32 @@ export function NoteCard({
             {getPlainTextPreview(note.body, NOTE_PREVIEW_MAX_CHARS)}
           </p>
         </CardContent>
-        <CardFooter className="text-xs text-zinc-400">
-          {formatUpdatedAt(note.updatedAt)}
-        </CardFooter>
+        {variant === "trash" ? (
+          <CardFooter className="text-xs text-zinc-400">
+            {formatUpdatedAt(note.updatedAt)}
+          </CardFooter>
+        ) : null}
       </Link>
+      {variant === "active" ? (
+        <div className="flex items-center justify-between border-t border-zinc-100 px-4 py-2.5">
+          <span className="text-xs text-zinc-400">
+            {formatUpdatedAt(note.updatedAt)}
+          </span>
+          {onDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-7 min-w-0 px-2 p-0 text-zinc-400 hover:text-red-600 hover:bg-red-50"
+              aria-label="Move note to trash"
+              onClick={onDelete}
+              disabled={isDeletePending}
+              isLoading={isDeletePending}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {variant === "trash" ? (
         <div className="flex gap-2 border-t border-zinc-100 p-4 pt-3">
           <Button

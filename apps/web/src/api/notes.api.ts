@@ -66,6 +66,13 @@ export async function restoreNote(id: string): Promise<NoteResponseDto> {
   return response.data.data;
 }
 
+export async function deleteNote(id: string): Promise<{ id: string }> {
+  const response = await httpClient.delete<ApiSuccessResponse<{ id: string }>>(
+    `${NOTES_ROOT}/${id}`,
+  );
+  return response.data.data;
+}
+
 export async function permanentDeleteNote(
   id: string,
   input: PermanentDeleteInput,

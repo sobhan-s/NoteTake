@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Menu } from "lucide-react";
+import { Menu, Plus } from "lucide-react";
 import { APP_LIMITS } from "@shared/core/constants";
 import type { ListNotesQuery } from "@shared/core/types";
 import { useActiveNotes } from "@/hooks/useActiveNotes";
@@ -131,16 +131,27 @@ export function NotesPage() {
         <SidebarNav activeTab={activeTab} onTabChange={handleTabChange} />
       </Sheet>
       <div className="flex w-full flex-1 flex-col gap-6 p-4 sm:p-6">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            className="lg:hidden"
-            onClick={openMobileSidebar}
-            aria-label="Open navigation"
-          >
-            <Menu className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <NotesTabs activeTab={activeTab} onTabChange={handleTabChange} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="lg:hidden"
+              onClick={openMobileSidebar}
+              aria-label="Open navigation"
+            >
+              <Menu className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            <NotesTabs activeTab={activeTab} onTabChange={handleTabChange} />
+          </div>
+          {activeTab === "active" ? (
+            <Button
+              onClick={handleCreateNote}
+              className="h-9 gap-1.5 px-3 py-1.5 text-xs font-medium"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              New Note
+            </Button>
+          ) : null}
         </div>
         {activeTab === "active" ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
