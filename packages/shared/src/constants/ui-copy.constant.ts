@@ -4,6 +4,8 @@ export const UI_COPY = {
   EMPTY_TRASH_BIN: "Spotless! Not even a digital crumb in sight.",
   PERMANENT_DELETE_CONFIRM:
     "Gone forever. Like tears in rain. Are you 100% sure?",
+  NOTE_TRASHED_CONFIRM: "Are you sure you want to move this note to the trash?",
+  NOTE_TRASHED_SUCCESS: "Note moved to trash.",
   TRASH_RESTORE_CONFIRM:
     "Are you sure you want to restore this note to your active notes?",
   TRASH_RESTORE_SUCCESS: "Note restored.",
@@ -18,4 +20,10 @@ export const UI_COPY = {
   SHARE_LINK_REVOKED_SUCCESS: "Share link revoked.",
   SHARE_LINK_COPIED_SUCCESS: "Link copied to clipboard.",
   SHARE_LINK_UNAVAILABLE: "This link is no longer available.",
+  VERSION_RESTORE_CONFIRM:
+    "This will overwrite the current content with this version. Your existing content becomes a new history entry, nothing is lost — are you sure?",
+  VERSION_RESTORE_SUCCESS: "Version restored.",
+  VERSION_UNAVAILABLE: "This version is no longer available.",
+  EMPTY_VERSION_HISTORY:
+    "No earlier versions yet — keep editing to build history.",
 } as const;
