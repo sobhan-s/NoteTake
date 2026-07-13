@@ -76,6 +76,7 @@ export function NoteEditorPage() {
               noteId={noteId === "new" ? null : noteId}
               note={noteQuery.data}
               onCreated={handleCreated}
+              onDeleted={() => navigate("/notes")}
             />
           )}
         </div>

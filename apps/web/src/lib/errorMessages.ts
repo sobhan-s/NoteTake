@@ -30,6 +30,8 @@ export function mapApiError(code?: string): string {
       return "No active share link found for this note.";
     case API_ERROR_CODES.SHARE_LINK_UNAVAILABLE:
       return UI_COPY.SHARE_LINK_UNAVAILABLE;
+    case API_ERROR_CODES.VERSION_NOT_FOUND:
+      return UI_COPY.VERSION_UNAVAILABLE;
     default:
       return GENERIC_ERROR_MESSAGE;
   }

@@ -4,19 +4,24 @@ import { StarterKit } from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
 import {
   Bold,
+  History,
   Italic,
   Link as LinkIcon,
   Share2,
+  Trash2,
   Underline as UnderlineIcon,
 } from "lucide-react";
-import { APP_LIMITS } from "@shared/core/constants";
+import { APP_LIMITS, UI_COPY } from "@shared/core/constants";
 import type { NoteResponseDto } from "@shared/core/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Input } from "@/components/ui/Input";
 import { AutosaveIndicator } from "@/components/editor/AutosaveIndicator";
 import { TagCombobox } from "@/components/editor/TagCombobox";
 import { ShareModal } from "@/components/sharing/ShareModal";
+import { VersionHistoryDrawer } from "@/components/versions/VersionHistoryDrawer";
+import { useDeleteNote } from "@/hooks/useDeleteNote";
 import { useNoteAutosave } from "@/hooks/useNoteAutosave";
 import { useTags } from "@/hooks/useTags";
 import { useUiStore } from "@/store/useUiStore";
@@ -25,10 +30,19 @@ export interface NoteEditorProps {
   noteId: string | null;
   note?: NoteResponseDto;
   onCreated: (newId: string) => void;
+  onDeleted?: () => void;
 }
 
-export function NoteEditor({ noteId, note, onCreated }: NoteEditorProps) {
+export function NoteEditor({
+  noteId,
+  note,
+  onCreated,
+  onDeleted,
+}: NoteEditorProps) {
+  const deleteNoteMutation = useDeleteNote();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const draftKey = noteId ?? "new";
   const drafts = useUiStore((state) => state.drafts);
   const setDraft = useUiStore((state) => state.setDraft);
@@ -229,6 +243,28 @@ export function NoteEditor({ noteId, note, onCreated }: NoteEditorProps) {
         >
           <Share2 className="h-4 w-4" aria-hidden="true" />
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-8 min-w-0 px-2"
+          aria-label="Version history"
+          disabled={noteId === null}
+          aria-disabled={noteId === null}
+          onClick={() => setIsVersionHistoryOpen(true)}
+        >
+          <History className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-8 min-w-0 px-2 text-zinc-500 hover:text-red-600 hover:bg-red-50"
+          aria-label="Delete note"
+          disabled={noteId === null}
+          aria-disabled={noteId === null}
+          onClick={() => setIsDeleteConfirmOpen(true)}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
 
       <EditorContent
@@ -269,6 +305,41 @@ export function NoteEditor({ noteId, note, onCreated }: NoteEditorProps) {
           noteId={noteId}
           open={isShareModalOpen}
           onOpenChange={setIsShareModalOpen}
+        />
+      ) : null}
+
+      {noteId !== null ? (
+        <VersionHistoryDrawer
+          noteId={noteId}
+          open={isVersionHistoryOpen}
+          onOpenChange={setIsVersionHistoryOpen}
+          onRestored={(restoredNote) => {
+            clearDraft(draftKey);
+            setTitle(restoredNote.title);
+            lastSavedTitleRef.current = restoredNote.title;
+            editor?.commands.setContent(restoredNote.body);
+            setTagIds(restoredNote.tags.map((tag) => tag.id));
+          }}
+        />
+      ) : null}
+
+      {noteId !== null ? (
+        <ConfirmModal
+          open={isDeleteConfirmOpen}
+          onOpenChange={setIsDeleteConfirmOpen}
+          heading="Move Note to Trash"
+          body={UI_COPY.NOTE_TRASHED_CONFIRM}
+          confirmLabel="Move to Trash"
+          isConfirming={deleteNoteMutation.isPending}
+          onConfirm={() => {
+            if (!noteId) return;
+            deleteNoteMutation.mutate(noteId, {
+              onSuccess: () => {
+                setIsDeleteConfirmOpen(false);
+                onDeleted?.();
+              },
+            });
+          }}
         />
       ) : null}
     </div>
