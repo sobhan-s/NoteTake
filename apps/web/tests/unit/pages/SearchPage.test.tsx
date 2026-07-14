@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import axios from "axios";
 import {
   render,
   screen,
@@ -220,13 +221,18 @@ describe("SearchPage ([FRS-8.4, Decision D5, D6] debounced query lifecycle, pagi
   it("[docs/ux.md §6] unauthenticated visitor rendering the protected /search route SHALL be redirected to /login without firing a search request (ProtectedRoute guard unchanged)", async () => {
     useAuthStore.getState().reset();
     searchNotesSpy.mockResolvedValue(buildPage(1));
+    const axiosPostSpy = vi
+      .spyOn(axios, "post")
+      .mockRejectedValue(new Error("No session"));
 
     renderProtectedSearchPage();
+    await flushMicrotasks();
 
     expect(screen.getByText("Login Page Stub")).toBeDefined();
     expect(screen.queryByLabelText("Search notes")).toBeNull();
 
     await advanceDebounce();
     expect(searchNotesSpy).not.toHaveBeenCalled();
+    axiosPostSpy.mockRestore();
   });
 });

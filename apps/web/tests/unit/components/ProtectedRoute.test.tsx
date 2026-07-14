@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useAuthStore } from "@/store/useAuthStore";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -21,7 +21,7 @@ describe("ProtectedRoute ([Protected route guard & navigation scenario, docs/ux.
     useAuthStore.getState().reset();
   });
 
-  it("should redirect to /login?next=<path> when accessToken is null", () => {
+  it("should redirect to /login?next=<path> when accessToken is null", async () => {
     render(
       <MemoryRouter initialEntries={["/notes"]}>
         <Routes>
@@ -39,9 +39,11 @@ describe("ProtectedRoute ([Protected route guard & navigation scenario, docs/ux.
     );
 
     expect(screen.queryByText("Protected Content")).toBeNull();
-    expect(screen.getByTestId("location").textContent).toBe(
-      "/login?next=%2Fnotes",
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/login?next=%2Fnotes",
+      );
+    });
   });
 
   it("should render children when accessToken is present", () => {

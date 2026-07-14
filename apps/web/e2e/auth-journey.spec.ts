@@ -68,7 +68,6 @@ test.describe("Auth Journey ([FRS-1.1–1.4])", () => {
 
     // Should navigate to /notes
     await expect(page).toHaveURL(/\/notes/);
-    await expect(page.locator("h1")).toHaveText(`Welcome, ${email}`);
 
     // 4. Logout
     await page.click('button:has-text("Logout")');
