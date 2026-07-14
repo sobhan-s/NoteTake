@@ -1,9 +1,4 @@
-# Universal AI Brain — Note-Taking Application (`root.md`)
 
-> **Master Operating & Spec-Driven Development (OpenSpec) Manual**  
-> *Single point of reference for developers and AI agents on repository architecture, domain boundaries, and the step-by-step OpenSpec (`@fission-ai/openspec`) Spec-Driven Development lifecycle.*
-
----
 
 ## 1. Project Overview & System Boundaries
 
