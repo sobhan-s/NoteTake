@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Menu } from "lucide-react";
+import { ArrowLeft, Menu } from "lucide-react";
 import { useNoteById } from "@/hooks/useNoteById";
 import { useMinLoadingTime } from "@/hooks/useMinLoadingTime";
 import { useUiStore } from "@/store/useUiStore";
@@ -28,8 +28,9 @@ export function NoteEditorPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-50">
-      <div className="hidden lg:flex lg:w-[260px] lg:flex-shrink-0 lg:border-r lg:border-zinc-200 lg:bg-white lg:p-4">
+    <div className="flex min-h-screen bg-[#fafbfc]">
+      {/* Sidebar */}
+      <div className="hidden lg:flex lg:w-[260px] lg:flex-shrink-0 lg:border-r lg:border-zinc-200/80 lg:bg-white lg:p-4">
         <SidebarNav activeTab="active" onTabChange={() => navigate("/notes")} />
       </div>
       <Sheet
@@ -41,46 +42,55 @@ export function NoteEditorPage() {
       >
         <SidebarNav activeTab="active" onTabChange={() => navigate("/notes")} />
       </Sheet>
-      <div className="flex w-full flex-1 gap-6 p-4 sm:p-6">
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              className="lg:hidden"
-              onClick={openMobileSidebar}
-              aria-label="Open navigation"
-            >
-              <Menu className="h-4 w-4" aria-hidden="true" />
-            </Button>
-            <Link
-              to="/notes"
-              className="text-sm text-zinc-500 hover:text-zinc-900"
-            >
-              ← Back to notes
-            </Link>
-          </div>
 
-          {noteId !== "new" && isMinLoading ? (
-            <div className="flex flex-col gap-4">
-              <Skeleton className="h-9 w-2/3" />
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-64 w-full" />
-            </div>
-          ) : noteId !== "new" && (noteQuery.isError || !noteQuery.data) ? (
-            <ErrorFallback
-              message="This note is no longer available."
-              onRetry={() => noteQuery.refetch()}
-            />
-          ) : (
-            <NoteEditor
-              noteId={noteId === "new" ? null : noteId}
-              note={noteQuery.data}
-              onCreated={handleCreated}
-              onDeleted={() => navigate("/notes")}
-            />
-          )}
+      {/* Main content area */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        {/* Tiny top strip: mobile menu + back link */}
+        <div className="flex items-center gap-2 px-4 py-2 sm:px-8">
+          <Button
+            variant="ghost"
+            className="h-8 w-8 rounded-md p-0 text-zinc-500 hover:text-zinc-900 lg:hidden"
+            onClick={openMobileSidebar}
+            aria-label="Open navigation"
+          >
+            <Menu className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Link
+            to="/notes"
+            className="inline-flex items-center gap-1 text-sm text-zinc-400 transition-colors hover:text-zinc-700"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />← Back to notes
+          </Link>
         </div>
-        <div className="hidden w-[320px] flex-shrink-0 lg:block" />
+
+        {/* Content */}
+        {noteId !== "new" && isMinLoading ? (
+          <div className="mx-auto w-full max-w-[820px] px-6 py-10 sm:px-12">
+            <Skeleton className="mb-3 h-10 w-2/3 rounded-md" />
+            <div className="mb-6 flex gap-2">
+              <Skeleton className="h-6 w-16 rounded-full" />
+              <Skeleton className="h-6 w-20 rounded-full" />
+            </div>
+            <Skeleton className="mb-4 h-10 w-full rounded-md" />
+            <Skeleton className="h-64 w-full rounded-lg" />
+          </div>
+        ) : noteId !== "new" && (noteQuery.isError || !noteQuery.data) ? (
+          <div className="flex flex-1 items-center justify-center p-12">
+            <div className="w-full max-w-sm">
+              <ErrorFallback
+                message="This note is no longer available."
+                onRetry={() => noteQuery.refetch()}
+              />
+            </div>
+          </div>
+        ) : (
+          <NoteEditor
+            noteId={noteId === "new" ? null : noteId}
+            note={noteQuery.data}
+            onCreated={handleCreated}
+            onDeleted={() => navigate("/notes")}
+          />
+        )}
       </div>
     </div>
   );

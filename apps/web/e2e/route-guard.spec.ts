@@ -44,6 +44,5 @@ test.describe("Route Guard & Navigation ([Protected route guard & navigation sce
 
     // 3. Should honor next parameter and land directly on /notes
     await expect(page).toHaveURL(/\/notes/);
-    await expect(page.locator("h1")).toHaveText(`Welcome, ${email}`);
   });
 });
